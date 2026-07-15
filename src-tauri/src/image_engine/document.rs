@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::alpha_engine::{self, AlphaAnalysis, AlphaTreatment, ProgressCallback, TreatmentImpact};
 #[cfg(test)]
 use crate::alpha_engine::{ProtectionOptions, ReconstructionMode};
+use crate::residue_engine::{self, MaskEdit, MaskSummary, ResidueCleanupOptions, ResidueMask};
 
 #[derive(Clone)]
 pub enum PixelBuffer {
@@ -61,6 +62,7 @@ pub struct ImageDocument {
     pub analysis: Option<AlphaAnalysis>,
     pub history: Vec<HistoryEntry>,
     pub future: Vec<HistoryEntry>,
+    pub residue_mask: ResidueMask,
 }
 
 #[derive(Debug, Serialize)]
@@ -80,6 +82,15 @@ pub struct ImportedDocument {
 pub struct TreatmentResult {
     pub revision: u64,
     pub impact: TreatmentImpact,
+    pub analysis: AlphaAnalysis,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResidueApplyResult {
+    pub revision: u64,
+    pub removed_pixels: u64,
+    pub removed_regions: u32,
     pub analysis: AlphaAnalysis,
 }
 
@@ -142,6 +153,7 @@ impl ImageDocument {
                 analysis: None,
                 history: Vec::new(),
                 future: Vec::new(),
+                residue_mask: ResidueMask::new(width as usize * height as usize),
             },
             imported,
         ))
@@ -274,6 +286,151 @@ impl ImageDocument {
         true
     }
 
+    pub fn edit_residue_mask(&mut self, edit: &MaskEdit) -> MaskSummary {
+        residue_engine::edit_mask(
+            &mut self.residue_mask,
+            &self.working,
+            self.width,
+            self.height,
+            edit,
+        )
+    }
+
+    pub fn residue_mask_summary(&self) -> MaskSummary {
+        residue_engine::summary(&self.residue_mask, self.width, self.height)
+    }
+
+    pub fn classify_residues_with_progress(
+        &mut self,
+        options: &ResidueCleanupOptions,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<MaskSummary, String> {
+        let protected_regions = self
+            .analysis
+            .as_ref()
+            .map(|analysis| analysis.regions.clone())
+            .unwrap_or_default();
+        residue_engine::classify_residues(
+            &mut self.residue_mask,
+            &self.working,
+            self.width,
+            self.height,
+            options,
+            &protected_regions,
+            progress,
+        )
+    }
+
+    pub fn residue_preview_png(&self) -> Result<Vec<u8>, String> {
+        let rgba = residue_engine::preview_rgba8(&self.residue_mask, &self.working);
+        encode_preview_png(self.width, self.height, &rgba)
+    }
+
+    pub fn apply_residue_mask_with_progress(
+        &mut self,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<ResidueApplyResult, String> {
+        let summary = self.residue_mask_summary();
+        if !summary.has_selection {
+            return Err("RESIDUE_MASK_EMPTY: no hay píxeles seleccionados".into());
+        }
+        let selected = self.residue_mask.selected_indices();
+        let mut candidate = self.working.clone();
+        let mut selected_lookup = vec![false; self.width as usize * self.height as usize];
+        for &index in &selected {
+            selected_lookup[index] = true;
+        }
+        progress(1, "Aplicando máscara binaria", 0, self.height as u64)?;
+        let delta = match &mut candidate {
+            PixelBuffer::Rgba8(pixels) => {
+                let mut changes = Vec::with_capacity(selected.len());
+                for y in 0..self.height {
+                    for x in 0..self.width {
+                        let index = y as usize * self.width as usize + x as usize;
+                        if selected_lookup[index] && pixels[index * 4 + 3] != 0 {
+                            let old = [
+                                pixels[index * 4],
+                                pixels[index * 4 + 1],
+                                pixels[index * 4 + 2],
+                                pixels[index * 4 + 3],
+                            ];
+                            let new = [old[0], old[1], old[2], 0];
+                            pixels[index * 4 + 3] = 0;
+                            changes.push((index, old, new));
+                        }
+                    }
+                    if y % 16 == 0 || y + 1 == self.height {
+                        progress(
+                            1,
+                            "Aplicando máscara binaria",
+                            (y + 1) as u64,
+                            self.height as u64,
+                        )?;
+                    }
+                }
+                PixelDelta::Rgba8(changes)
+            }
+            PixelBuffer::Rgba16(pixels) => {
+                let mut changes = Vec::with_capacity(selected.len());
+                for y in 0..self.height {
+                    for x in 0..self.width {
+                        let index = y as usize * self.width as usize + x as usize;
+                        if selected_lookup[index] && pixels[index * 4 + 3] != 0 {
+                            let old = [
+                                pixels[index * 4],
+                                pixels[index * 4 + 1],
+                                pixels[index * 4 + 2],
+                                pixels[index * 4 + 3],
+                            ];
+                            let new = [old[0], old[1], old[2], 0];
+                            pixels[index * 4 + 3] = 0;
+                            changes.push((index, old, new));
+                        }
+                    }
+                    if y % 16 == 0 || y + 1 == self.height {
+                        progress(
+                            1,
+                            "Aplicando máscara binaria",
+                            (y + 1) as u64,
+                            self.height as u64,
+                        )?;
+                    }
+                }
+                PixelDelta::Rgba16(changes)
+            }
+        };
+        progress(
+            2,
+            "Verificando que no se creen semitransparencias",
+            0,
+            self.height as u64,
+        )?;
+        let next_revision = self.revision + 1;
+        let analysis = alpha_engine::analyze_with_progress(
+            &self.id,
+            next_revision,
+            self.width,
+            self.height,
+            &candidate,
+            &mut |_, label, processed, total| progress(2, label, processed, total),
+        )?;
+        self.working = candidate;
+        self.revision = next_revision;
+        self.analysis = Some(analysis.clone());
+        self.history.push(HistoryEntry {
+            label: "Limpieza manual de residuos".into(),
+            delta,
+        });
+        self.future.clear();
+        self.residue_mask.clear_after_apply();
+        Ok(ResidueApplyResult {
+            revision: self.revision,
+            removed_pixels: summary.selected_pixels,
+            removed_regions: summary.selected_regions,
+            analysis,
+        })
+    }
+
     pub fn preview_png(&self, mode: &str) -> Result<Vec<u8>, String> {
         let rgba = alpha_engine::preview_rgba8(
             if mode == "original" {
@@ -313,7 +470,9 @@ impl ImageDocument {
     }
 
     pub fn operation_memory_bytes(&self) -> u64 {
-        (self.original.byte_len() + self.working.byte_len()) as u64
+        (self.original.byte_len()
+            + self.working.byte_len()
+            + self.width as usize * self.height as usize * 3) as u64
     }
 
     pub fn export_verified(
@@ -616,5 +775,38 @@ mod tests {
         assert_eq!(document.revision, 0);
         assert!(document.history.is_empty());
         assert_eq!(document.analyze().partial_alpha_pixels, 254);
+    }
+
+    #[test]
+    fn manual_residue_mask_only_sets_selected_alpha_to_zero_and_is_undoable() {
+        let (mut document, _) = ImageDocument::decode(
+            "manual-clean".into(),
+            "fixture.png".into(),
+            png8_all_alpha(),
+        )
+        .unwrap();
+        document.edit_residue_mask(&MaskEdit::Rectangle {
+            start: crate::residue_engine::MaskPoint { x: 100.0, y: 0.0 },
+            end: crate::residue_engine::MaskPoint { x: 101.0, y: 1.0 },
+            mode: crate::residue_engine::MaskMode::Add,
+        });
+        let result = document
+            .apply_residue_mask_with_progress(&mut |_, _, _, _| Ok(()))
+            .unwrap();
+        assert_eq!(result.removed_pixels, 1);
+        assert_eq!(result.analysis.partial_alpha_pixels, 253);
+        match &document.working {
+            PixelBuffer::Rgba8(pixels) => {
+                assert_eq!(pixels[100 * 4 + 3], 0);
+                assert_eq!(pixels[99 * 4 + 3], 99);
+                assert_eq!(pixels[101 * 4 + 3], 101);
+            }
+            _ => panic!("se esperaba RGBA8"),
+        }
+        assert!(document.undo());
+        match &document.working {
+            PixelBuffer::Rgba8(pixels) => assert_eq!(pixels[100 * 4 + 3], 100),
+            _ => panic!("se esperaba RGBA8"),
+        }
     }
 }

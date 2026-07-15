@@ -6,6 +6,7 @@ use tauri::{ipc::Response, State};
 use crate::{
     alpha_engine::AlphaTreatment,
     application::{jobs::JobSnapshot, revisions, state::AppState},
+    residue_engine::ResidueCleanupOptions,
 };
 
 #[derive(Debug, Serialize)]
@@ -172,6 +173,126 @@ pub fn start_alpha_treatment_job(
             })?;
             let result = document.apply_treatment_with_progress(
                 &treatment,
+                &mut |stage, label, processed, total| {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err("JOB_CANCELLED".into());
+                    }
+                    state.jobs.progress(
+                        &worker_job_id,
+                        label,
+                        stage,
+                        processed,
+                        total,
+                        "píxeles/filas",
+                    )
+                },
+            )?;
+            serde_json::to_value(result).map_err(|error| error.to_string())
+        })();
+        match result {
+            Ok(value) => {
+                let _ = state.jobs.complete(&worker_job_id, value, None);
+            }
+            Err(error) => state.jobs.fail(&worker_job_id, &error),
+        }
+    });
+    Ok(StartedJob { job_id })
+}
+
+#[tauri::command]
+pub fn start_residue_cleanup_job(
+    document_id: String,
+    options: ResidueCleanupOptions,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> Result<StartedJob, String> {
+    let state = state.inner().clone();
+    let document = state.get(&document_id)?;
+    let memory = document
+        .lock()
+        .map_err(|_| "No se pudo leer el documento".to_string())?
+        .operation_memory_bytes();
+    let job_id = state
+        .jobs
+        .create("residue_cleanup", "Detectar residuos", 5, memory)?;
+    let worker_job_id = job_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = (|| {
+            let cancel = state.jobs.cancellation_flag(&worker_job_id)?;
+            let mut document = document
+                .lock()
+                .map_err(|_| "No se pudo bloquear el documento".to_string())?;
+            revisions::verify(Some(expected_revision), document.revision).map_err(|conflict| {
+                format!(
+                    "{}: revisión actual {}",
+                    conflict.code, conflict.current_revision
+                )
+            })?;
+            let summary = document.classify_residues_with_progress(
+                &options,
+                &mut |stage, label, processed, total| {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err("JOB_CANCELLED".into());
+                    }
+                    state.jobs.progress(
+                        &worker_job_id,
+                        label,
+                        stage,
+                        processed,
+                        total,
+                        "regiones/filas",
+                    )
+                },
+            )?;
+            let preview = document.residue_preview_png()?;
+            Ok::<_, String>((
+                serde_json::to_value(summary).map_err(|e| e.to_string())?,
+                preview,
+            ))
+        })();
+        match result {
+            Ok((value, preview)) => {
+                let _ = state.jobs.complete(&worker_job_id, value, Some(preview));
+            }
+            Err(error) => state.jobs.fail(&worker_job_id, &error),
+        }
+    });
+    Ok(StartedJob { job_id })
+}
+
+#[tauri::command]
+pub fn start_apply_residue_job(
+    document_id: String,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> Result<StartedJob, String> {
+    let state = state.inner().clone();
+    let document = state.get(&document_id)?;
+    let memory = document
+        .lock()
+        .map_err(|_| "No se pudo leer el documento".to_string())?
+        .operation_memory_bytes()
+        .saturating_mul(2);
+    let job_id = state.jobs.create(
+        "residue_apply",
+        "Eliminar residuos seleccionados",
+        2,
+        memory,
+    )?;
+    let worker_job_id = job_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = (|| {
+            let cancel = state.jobs.cancellation_flag(&worker_job_id)?;
+            let mut document = document
+                .lock()
+                .map_err(|_| "No se pudo bloquear el documento".to_string())?;
+            revisions::verify(Some(expected_revision), document.revision).map_err(|conflict| {
+                format!(
+                    "{}: revisión actual {}",
+                    conflict.code, conflict.current_revision
+                )
+            })?;
+            let result = document.apply_residue_mask_with_progress(
                 &mut |stage, label, processed, total| {
                     if cancel.load(Ordering::Relaxed) {
                         return Err("JOB_CANCELLED".into());

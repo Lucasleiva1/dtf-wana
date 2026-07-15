@@ -1,6 +1,8 @@
 export type ModuleId = "background" | "transparency" | "separation";
 export type PreviewBackground = "checker-small" | "checker-large" | "white" | "black" | "gray" | "custom";
-export type ToolId = "select" | "transform" | "hand" | "zoom" | "brush" | "eraser" | "analyze";
+export type ToolId =
+  | "select" | "transform" | "hand" | "zoom" | "brush" | "eraser" | "analyze"
+  | "residue-region" | "residue-rectangle" | "residue-lasso" | "residue-brush";
 
 export type StudioDocument = {
   id: string;

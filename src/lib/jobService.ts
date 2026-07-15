@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AlphaAnalysis, AlphaTreatment, ExportVerification, JobSnapshot, TreatmentImpact, TreatmentResult } from "../types/alpha";
 import type { StudioDocument } from "../types/document";
+import type { MaskSummary, ResidueApplyResult, ResidueCleanupOptions } from "../types/residue";
 
 type StartedJob = { jobId: string };
 
@@ -65,6 +66,39 @@ export async function runTreatmentJob(
     onProgress,
   );
   if (!job.result) throw new Error("El tratamiento terminó sin resultado verificable.");
+  return job.result;
+}
+
+export async function runResidueCleanupJob(
+  document: StudioDocument,
+  options: ResidueCleanupOptions,
+  onProgress: (job: JobSnapshot<MaskSummary>) => void,
+): Promise<{ summary: MaskSummary; blob: Blob }> {
+  const job = await watchJob<MaskSummary>(
+    invoke<StartedJob>("start_residue_cleanup_job", {
+      documentId: document.id,
+      options,
+      expectedRevision: document.revision,
+    }),
+    onProgress,
+  );
+  if (!job.result) throw new Error("La detección de residuos terminó sin resultado.");
+  const bytes = await invoke<ArrayBuffer>("get_job_binary", { jobId: job.id });
+  return { summary: job.result, blob: new Blob([bytes], { type: "image/png" }) };
+}
+
+export async function runApplyResidueJob(
+  document: StudioDocument,
+  onProgress: (job: JobSnapshot<ResidueApplyResult>) => void,
+): Promise<ResidueApplyResult> {
+  const job = await watchJob<ResidueApplyResult>(
+    invoke<StartedJob>("start_apply_residue_job", {
+      documentId: document.id,
+      expectedRevision: document.revision,
+    }),
+    onProgress,
+  );
+  if (!job.result) throw new Error("La limpieza terminó sin verificación.");
   return job.result;
 }
 

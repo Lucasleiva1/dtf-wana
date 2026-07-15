@@ -11,6 +11,7 @@ import type {
   RiskLevel, TreatmentImpact,
 } from "../types/alpha";
 import type { ModuleId } from "../types/document";
+import { ResidueCleanup } from "./ResidueCleanup";
 
 const tabs: Array<[ModuleId, string]> = [["background", "Quitar fondo"], ["transparency", "Transparencias"], ["separation", "Separar"]];
 const number = new Intl.NumberFormat("es-AR");
@@ -328,6 +329,12 @@ function TransparencyInspector() {
           <small className="microcopy">El documento no cambia hasta confirmar. La operación completa puede deshacerse.</small>
         </section>
       </>}
+      {analysis && <ResidueCleanup protectedRegionIds={protections.preservedRegionIds} onUnprotectCurrent={() => {
+        const region = analysis.regions[regionIndex];
+        if (!region) return;
+        setProtections((current) => ({ ...current, preservedRegionIds: current.preservedRegionIds.filter((id) => id !== region.id) }));
+        setNotification({ kind: "info", text: "La protección manual de la región fue retirada. Una selección manual puede eliminarla." });
+      }} />}
     </div>
   );
 }

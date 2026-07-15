@@ -2,6 +2,7 @@ mod alpha_engine;
 mod application;
 mod commands;
 mod image_engine;
+mod residue_engine;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,10 +13,14 @@ pub fn run() {
             commands::dispatcher::dispatch_command,
             commands::document::upload_document_bytes,
             commands::document::get_document_preview,
+            commands::residue::edit_residue_mask,
+            commands::residue::get_residue_mask_preview,
             commands::jobs::start_alpha_analysis_job,
             commands::jobs::start_alpha_preview_job,
             commands::jobs::start_alpha_treatment_job,
             commands::jobs::start_export_job,
+            commands::jobs::start_residue_cleanup_job,
+            commands::jobs::start_apply_residue_job,
             commands::jobs::get_job_status,
             commands::jobs::cancel_job,
             commands::jobs::get_job_binary
