@@ -11,6 +11,11 @@ export type StudioDocument = {
   height: number;
   previewUrl: string;
   sourceFile: File;
+  renderBlob: Blob;
+  renderRevision: number;
+  format: string;
+  bitDepth: 8 | 16;
+  revision: number;
   dirty: boolean;
 };
 

@@ -18,6 +18,11 @@ export type CommandResult<T> = {
   error?: { code: string; message: string; details?: unknown };
 };
 
+export type DispatchOptions = {
+  expectedRevision?: number;
+  dryRun?: boolean;
+};
+
 export type SystemCapabilities = {
   os: string;
   cpu: string;
@@ -30,12 +35,14 @@ function requestId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 }
 
-export async function dispatchCommand<TPayload, TResult>(command: string, payload: TPayload): Promise<CommandResult<TResult>> {
+export async function dispatchCommand<TPayload, TResult>(command: string, payload: TPayload, options: DispatchOptions = {}): Promise<CommandResult<TResult>> {
   const request: CommandRequest<TPayload> = {
     protocolVersion: 1,
     requestId: requestId(),
     command,
     payload,
+    expectedRevision: options.expectedRevision,
+    dryRun: options.dryRun,
     client: { id: "human-ui", name: "DTF Pro Studio", transport: "tauri" },
   };
   if (!window.__TAURI_INTERNALS__) {

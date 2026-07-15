@@ -3,14 +3,6 @@ import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import { ImagePlus, MousePointer2 } from "lucide-react";
 import { useStudioStore } from "../stores/studioStore";
 
-const backgroundColor: Record<string, number> = {
-  white: 0xffffff,
-  black: 0x080808,
-  gray: 0x7f7f7f,
-  "checker-small": 0x202020,
-  "checker-large": 0x202020,
-};
-
 export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const pixiRef = useRef<{ app: Application; world: Container; artboard: Graphics; sprite?: Sprite } | null>(null);
@@ -74,20 +66,8 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
       }
       pixi.artboard.clear();
       if (!document) return;
-      const checker = previewBackground.startsWith("checker");
-      pixi.artboard.rect(0, 0, document.width, document.height).fill(backgroundColor[previewBackground]);
-      if (checker) {
-        const size = previewBackground === "checker-large" ? 32 : 16;
-        const cols = Math.ceil(document.width / size);
-        const rows = Math.ceil(document.height / size);
-        for (let y = 0; y < rows; y += 1) {
-          for (let x = 0; x < cols; x += 1) {
-            if ((x + y) % 2 === 0) pixi.artboard.rect(x * size, y * size, size, size).fill(0x3a3a3a);
-          }
-        }
-      }
       pixi.artboard.rect(0, 0, document.width, document.height).stroke({ color: 0x8f8a83, width: 1 });
-      const bitmap = await createImageBitmap(document.sourceFile);
+      const bitmap = await createImageBitmap(document.renderBlob);
       if (cancelled || !pixiRef.current || pixiRef.current !== pixi) {
         bitmap.close();
         return;
@@ -142,7 +122,7 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
   }, [activeTool, panBy, setZoomAt]);
 
   return (
-    <div ref={hostRef} className={`canvas-workspace tool-${activeTool}`} aria-label="Lienzo de trabajo">
+    <div ref={hostRef} className={`canvas-workspace tool-${activeTool} background-${previewBackground}`} aria-label="Lienzo de trabajo">
       {!document && (
         <button className="empty-canvas" onClick={onOpen}>
           <ImagePlus size={34} strokeWidth={1.3} />

@@ -1,12 +1,19 @@
 import { create } from "zustand";
 import { clampZoom, fitRect, zoomAt } from "../canvas/camera";
 import type { Camera, ModuleId, PreviewBackground, StudioDocument, ToolId } from "../types/document";
+import type { AlphaAnalysis, PreviewMode } from "../types/alpha";
 
 type StudioState = {
   activeModule: ModuleId;
   activeTool: ToolId;
   previewBackground: PreviewBackground;
   document: StudioDocument | null;
+  alphaAnalysis: AlphaAnalysis | null;
+  alphaStatus: "idle" | "analyzing" | "applying" | "complete" | "error";
+  alphaError: string | null;
+  alphaRegionIndex: number;
+  previewMode: PreviewMode;
+  notification: { kind: "success" | "error" | "info"; text: string } | null;
   camera: Camera;
   viewport: { width: number; height: number };
   history: string[];
@@ -15,6 +22,13 @@ type StudioState = {
   setTool: (tool: ToolId) => void;
   setPreviewBackground: (background: PreviewBackground) => void;
   setDocument: (document: StudioDocument | null) => void;
+  updateDocument: (patch: Partial<StudioDocument>) => void;
+  setAlphaAnalysis: (analysis: AlphaAnalysis | null) => void;
+  setAlphaStatus: (status: StudioState["alphaStatus"], error?: string | null) => void;
+  setPreviewMode: (mode: PreviewMode) => void;
+  setRegionIndex: (index: number) => void;
+  focusRect: (rect: { minX: number; minY: number; maxX: number; maxY: number }) => void;
+  setNotification: (notification: StudioState["notification"]) => void;
   setViewport: (viewport: { width: number; height: number }) => void;
   panBy: (dx: number, dy: number) => void;
   setZoomAt: (zoom: number, point: { x: number; y: number }) => void;
@@ -33,6 +47,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   activeTool: "select",
   previewBackground: "checker-small",
   document: null,
+  alphaAnalysis: null,
+  alphaStatus: "idle",
+  alphaError: null,
+  alphaRegionIndex: 0,
+  previewMode: "original",
+  notification: null,
   camera: initialCamera,
   viewport: { width: 900, height: 600 },
   history: [],
@@ -43,9 +63,24 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setDocument: (document) => {
     const previous = get().document;
     if (previous?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(previous.previewUrl);
-    set({ document, history: document ? [`Abrir ${document.name}`] : [], future: [] });
+    set({ document, alphaAnalysis: null, alphaStatus: "idle", alphaError: null, alphaRegionIndex: 0, previewMode: "original", history: document ? [`Abrir ${document.name}`] : [], future: [] });
     queueMicrotask(() => get().fitDocument());
   },
+  updateDocument: (patch) => set((state) => ({ document: state.document ? { ...state.document, ...patch } : null })),
+  setAlphaAnalysis: (alphaAnalysis) => set({ alphaAnalysis, alphaRegionIndex: 0 }),
+  setAlphaStatus: (alphaStatus, alphaError = null) => set({ alphaStatus, alphaError }),
+  setPreviewMode: (previewMode) => set({ previewMode }),
+  setRegionIndex: (alphaRegionIndex) => set({ alphaRegionIndex }),
+  focusRect: (rect) => {
+    const { viewport } = get();
+    const width = Math.max(1, rect.maxX - rect.minX + 1);
+    const height = Math.max(1, rect.maxY - rect.minY + 1);
+    const zoom = clampZoom(Math.min(32, (viewport.width * 0.58) / width, (viewport.height * 0.58) / height));
+    const centerX = (rect.minX + rect.maxX + 1) / 2;
+    const centerY = (rect.minY + rect.maxY + 1) / 2;
+    set({ camera: { zoom, x: viewport.width / 2 - centerX * zoom, y: viewport.height / 2 - centerY * zoom } });
+  },
+  setNotification: (notification) => set({ notification }),
   setViewport: (viewport) => set({ viewport }),
   panBy: (dx, dy) => set((state) => ({ camera: { ...state.camera, x: state.camera.x + dx, y: state.camera.y + dy } })),
   setZoomAt: (zoom, point) => set((state) => ({ camera: zoomAt(state.camera, zoom, point) })),
