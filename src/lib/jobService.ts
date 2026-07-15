@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AlphaAnalysis, AlphaTreatment, ExportVerification, JobSnapshot, TreatmentImpact, TreatmentResult } from "../types/alpha";
+import type { AlphaAnalysis, AlphaTreatment, EdgePolishImpact, EdgePolishOptions, EdgePolishResult, ExportVerification, JobSnapshot, TreatmentImpact, TreatmentResult } from "../types/alpha";
 import type { StudioDocument } from "../types/document";
 import type { MaskSummary, ResidueApplyResult, ResidueCleanupOptions } from "../types/residue";
 import { rgbaBytesToBitmap } from "./bitmapService";
@@ -67,6 +67,41 @@ export async function runTreatmentJob(
     onProgress,
   );
   if (!job.result) throw new Error("El tratamiento terminó sin resultado verificable.");
+  return job.result;
+}
+
+export async function runEdgePolishPreviewJob(
+  document: StudioDocument,
+  options: EdgePolishOptions,
+  onProgress: (job: JobSnapshot<EdgePolishImpact>) => void,
+): Promise<{ impact: EdgePolishImpact; bitmap: ImageBitmap }> {
+  const job = await watchJob<EdgePolishImpact>(
+    invoke<StartedJob>("start_edge_polish_preview_job", {
+      documentId: document.id,
+      options,
+      expectedRevision: document.revision,
+    }),
+    onProgress,
+  );
+  if (!job.result) throw new Error("La previsualización de borde terminó sin estadísticas.");
+  const bytes = await invoke<ArrayBuffer>("get_job_binary", { jobId: job.id });
+  return { impact: job.result, bitmap: await rgbaBytesToBitmap(bytes, document.width, document.height) };
+}
+
+export async function runEdgePolishApplyJob(
+  document: StudioDocument,
+  options: EdgePolishOptions,
+  onProgress: (job: JobSnapshot<EdgePolishResult>) => void,
+): Promise<EdgePolishResult> {
+  const job = await watchJob<EdgePolishResult>(
+    invoke<StartedJob>("start_edge_polish_apply_job", {
+      documentId: document.id,
+      options,
+      expectedRevision: document.revision,
+    }),
+    onProgress,
+  );
+  if (!job.result) throw new Error("El pulido terminó sin verificación técnica.");
   return job.result;
 }
 

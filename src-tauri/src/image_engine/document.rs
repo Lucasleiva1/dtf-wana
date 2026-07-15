@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::alpha_engine::{self, AlphaAnalysis, AlphaTreatment, ProgressCallback, TreatmentImpact};
 #[cfg(test)]
 use crate::alpha_engine::{ProtectionOptions, ReconstructionMode};
+use crate::edge_polish_engine::{self, EdgePolishImpact, EdgePolishOptions};
 use crate::residue_engine::{
     self, DirtyRect, MaskEdit, MaskEditResult, MaskSummary, ResidueCleanupOptions, ResidueMask,
 };
@@ -93,6 +94,14 @@ pub struct ResidueApplyResult {
     pub revision: u64,
     pub removed_pixels: u64,
     pub removed_regions: u32,
+    pub analysis: AlphaAnalysis,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EdgePolishResult {
+    pub revision: u64,
+    pub impact: EdgePolishImpact,
     pub analysis: AlphaAnalysis,
 }
 
@@ -476,6 +485,83 @@ impl ImageDocument {
         Ok((rgba, plan.impact))
     }
 
+    pub fn edge_polish_preview_rgba8(
+        &self,
+        options: &EdgePolishOptions,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<(Vec<u8>, EdgePolishImpact), String> {
+        let plan =
+            edge_polish_engine::plan(&self.working, self.width, self.height, options, progress)?;
+        let impact = plan.impact.clone();
+        let mut candidate = self.working.clone();
+        edge_polish_engine::apply_plan(&mut candidate, self.width, self.height, &plan, progress)?;
+        Ok((alpha_engine::preview_rgba8(&candidate, "result"), impact))
+    }
+
+    pub fn apply_edge_polish_with_progress(
+        &mut self,
+        options: &EdgePolishOptions,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<EdgePolishResult, String> {
+        let current_analysis = self.analysis.clone().unwrap_or_else(|| {
+            alpha_engine::analyze(
+                &self.id,
+                self.revision,
+                self.width,
+                self.height,
+                &self.working,
+            )
+        });
+        if !current_analysis.verified_solid_alpha {
+            return Err("EDGE_POLISH_REQUIRES_TECHNICAL_VERIFICATION: resolvé y verificá las semitransparencias antes de pulir".into());
+        }
+        let plan =
+            edge_polish_engine::plan(&self.working, self.width, self.height, options, progress)?;
+        let impact = plan.impact.clone();
+        let mut candidate = self.working.clone();
+        let delta = edge_polish_engine::apply_plan(
+            &mut candidate,
+            self.width,
+            self.height,
+            &plan,
+            progress,
+        )?;
+        let next_revision = self.revision + 1;
+        progress(
+            5,
+            "Reanalizando y verificando alfa 0/255",
+            0,
+            self.height as u64,
+        )?;
+        let analysis = alpha_engine::analyze_with_progress(
+            &self.id,
+            next_revision,
+            self.width,
+            self.height,
+            &candidate,
+            &mut |_, label, processed, total| progress(5, label, processed, total),
+        )?;
+        if !analysis.verified_solid_alpha {
+            return Err(format!(
+                "EDGE_POLISH_BINARY_VERIFICATION_FAILED: aparecieron {} valores alfa intermedios",
+                analysis.partial_alpha_pixels
+            ));
+        }
+        self.working = candidate;
+        self.revision = next_revision;
+        self.analysis = Some(analysis.clone());
+        self.history.push(HistoryEntry {
+            label: "Pulido de borde binario".into(),
+            delta,
+        });
+        self.future.clear();
+        Ok(EdgePolishResult {
+            revision: self.revision,
+            impact,
+            analysis,
+        })
+    }
+
     pub fn operation_memory_bytes(&self) -> u64 {
         (self.original.byte_len()
             + self.working.byte_len()
@@ -656,6 +742,21 @@ mod tests {
         encode_png(8, 1, png::BitDepth::Sixteen, &pixels)
     }
 
+    fn png8_binary_shape() -> Vec<u8> {
+        let width = 9usize;
+        let height = 9usize;
+        let mut pixels = vec![0u8; width * height * 4];
+        for y in 2..7 {
+            for x in 2..7 {
+                let index = (y * width + x) * 4;
+                pixels[index..index + 4].copy_from_slice(&[130, 80, 40, 255]);
+            }
+        }
+        let tip = (width + 4) * 4;
+        pixels[tip..tip + 4].copy_from_slice(&[130, 80, 40, 255]);
+        encode_png(width as u32, height as u32, png::BitDepth::Eight, &pixels)
+    }
+
     fn encode_png(width: u32, height: u32, depth: png::BitDepth, pixels: &[u8]) -> Vec<u8> {
         let mut result = Vec::new();
         {
@@ -800,5 +901,78 @@ mod tests {
             PixelBuffer::Rgba8(pixels) => assert_eq!(pixels[100 * 4 + 3], 100),
             _ => panic!("se esperaba RGBA8"),
         }
+    }
+
+    #[test]
+    fn edge_polish_reverifies_binary_alpha_and_undo_restores_pixels() {
+        let (mut document, _) =
+            ImageDocument::decode("polish".into(), "binary.png".into(), png8_binary_shape())
+                .unwrap();
+        let original = match &document.working {
+            PixelBuffer::Rgba8(pixels) => pixels.clone(),
+            _ => panic!("se esperaba RGBA8"),
+        };
+        assert!(document.analyze().verified_solid_alpha);
+        let options = crate::edge_polish_engine::EdgePolishOptions {
+            method: crate::edge_polish_engine::EdgePolishMethod::SpikeRounding,
+            protect_fine_detail: false,
+            protect_connected_texture: false,
+            ..Default::default()
+        };
+        let result = document
+            .apply_edge_polish_with_progress(&options, &mut |_, _, _, _| Ok(()))
+            .unwrap();
+        assert!(result.analysis.verified_solid_alpha);
+        assert!(result.impact.changed_pixels > 0);
+        assert!(document.undo());
+        match &document.working {
+            PixelBuffer::Rgba8(pixels) => assert_eq!(pixels, &original),
+            _ => panic!("se esperaba RGBA8"),
+        }
+    }
+
+    #[test]
+    #[ignore = "requiere la variable DTF_POLISH_FIXTURE con una imagen real"]
+    fn real_fixture_edge_polish_stays_binary() {
+        let path = std::env::var("DTF_POLISH_FIXTURE").expect("falta DTF_POLISH_FIXTURE");
+        let bytes = std::fs::read(&path).expect("no se pudo leer la imagen de prueba");
+        let (mut document, _) = ImageDocument::decode("real-polish".into(), path, bytes).unwrap();
+        let initial = document.analyze();
+        if !initial.verified_solid_alpha {
+            let recommendation = initial
+                .recommendation
+                .as_ref()
+                .expect("la imagen parcial debe recomendar umbral");
+            document.apply_treatment(&AlphaTreatment::Threshold {
+                threshold: recommendation.recommended_threshold,
+                reconstruct_radius: recommendation.recommended_radius,
+                reconstruction_mode: ReconstructionMode::Automatic,
+                protections: ProtectionOptions {
+                    protect_connected_texture: true,
+                    protect_fine_lines: true,
+                    protect_grunge: true,
+                    only_isolated_particles: false,
+                    preserved_region_ids: Vec::new(),
+                },
+            });
+        }
+        let options = crate::edge_polish_engine::EdgePolishOptions::default();
+        let result = document
+            .apply_edge_polish_with_progress(&options, &mut |_, _, _, _| Ok(()))
+            .unwrap();
+        eprintln!(
+            "fixture={}x{} changed={} transparent={} opaque={} protected={} jagged={}->{}",
+            document.width,
+            document.height,
+            result.impact.changed_pixels,
+            result.impact.became_transparent,
+            result.impact.became_opaque,
+            result.impact.protected_pixels,
+            result.impact.jagged_points_before,
+            result.impact.jagged_points_after,
+        );
+        assert!(result.analysis.verified_solid_alpha);
+        assert_eq!(result.analysis.partial_alpha_pixels, 0);
+        assert!(result.impact.changed_pixels > 0);
     }
 }

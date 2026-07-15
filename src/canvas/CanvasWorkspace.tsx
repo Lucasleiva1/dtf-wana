@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
-import { ImagePlus, MousePointer2 } from "lucide-react";
+import { ImageMinus, ImagePlus, MousePointer2 } from "lucide-react";
 import { useStudioStore } from "../stores/studioStore";
 import { editResidueMask, refreshResiduePreview } from "../lib/residueService";
 import type { MaskMode, MaskPoint } from "../types/residue";
@@ -16,7 +16,7 @@ type PixiWorkspace = {
 
 const MASK_TILE_SIZE = 512;
 
-export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
+export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRemove: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const pixiRef = useRef<PixiWorkspace | null>(null);
   const [rendererReady, setRendererReady] = useState(0);
@@ -254,6 +254,22 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
 
   useEffect(() => {
     const host = hostRef.current;
+    if (!host || !document) return;
+    const context = (event: MouseEvent) => {
+      const rect = host.getBoundingClientRect();
+      const current = useStudioStore.getState().camera;
+      const x = (event.clientX - rect.left - current.x) / current.zoom;
+      const y = (event.clientY - rect.top - current.y) / current.zoom;
+      if (x < 0 || y < 0 || x >= document.width || y >= document.height) return;
+      event.preventDefault();
+      setContextMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    };
+    host.addEventListener("contextmenu", context);
+    return () => host.removeEventListener("contextmenu", context);
+  }, [document]);
+
+  useEffect(() => {
+    const host = hostRef.current;
     if (!host) return;
     let dragging = false;
     let last = { x: 0, y: 0 };
@@ -369,26 +385,17 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
       else setResidueGesture(null);
     };
     const leave = () => { if (!gestureRef.current) setCursorPoint(null); };
-    const context = (event: MouseEvent) => {
-      const point = imagePoint(event as unknown as PointerEvent);
-      if (!point) return;
-      event.preventDefault();
-      const rect = host.getBoundingClientRect();
-      setContextMenu({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-    };
     host.addEventListener("pointerdown", down);
     host.addEventListener("pointermove", move);
     host.addEventListener("pointerup", up);
     host.addEventListener("pointercancel", up);
     host.addEventListener("pointerleave", leave);
-    host.addEventListener("contextmenu", context);
     return () => {
       host.removeEventListener("pointerdown", down);
       host.removeEventListener("pointermove", move);
       host.removeEventListener("pointerup", up);
       host.removeEventListener("pointercancel", up);
       host.removeEventListener("pointerleave", leave);
-      host.removeEventListener("contextmenu", context);
     };
   }, [activeTool, document, residueBrushSize, residueMode]);
 
@@ -418,6 +425,8 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
         <button onClick={() => { setResidueMaskMode("add"); setContextMenu(null); }}>Añadir a eliminación</button>
         <button onClick={() => { setResidueMaskMode("subtract"); setContextMenu(null); }}>Quitar de eliminación</button>
         <button onClick={() => { const latest = useStudioStore.getState().document; if (latest) void editResidueMask(latest, { action: "clear" }).then((summary) => refreshResiduePreview(latest, summary)); setContextMenu(null); }}>Deseleccionar todo</button>
+        <i />
+        <button className="remove-image" onClick={() => { setContextMenu(null); onRemove(); }}><span><ImageMinus size={14} /> Quitar imagen</span><small>No borra el archivo</small></button>
       </div>}
       {showMaskActivity && <div className="mask-update-indicator">Actualizando máscara…</div>}
       {rendererError && <div className="renderer-error">WebGL no está disponible. Se habilitará el fallback 2D.</div>}

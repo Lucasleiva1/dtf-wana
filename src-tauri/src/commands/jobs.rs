@@ -6,6 +6,7 @@ use tauri::{ipc::Response, State};
 use crate::{
     alpha_engine::AlphaTreatment,
     application::{jobs::JobSnapshot, revisions, state::AppState},
+    edge_polish_engine::EdgePolishOptions,
     residue_engine::ResidueCleanupOptions,
 };
 
@@ -304,6 +305,128 @@ pub fn start_apply_residue_job(
                         processed,
                         total,
                         "píxeles/filas",
+                    )
+                },
+            )?;
+            serde_json::to_value(result).map_err(|error| error.to_string())
+        })();
+        match result {
+            Ok(value) => {
+                let _ = state.jobs.complete(&worker_job_id, value, None);
+            }
+            Err(error) => state.jobs.fail(&worker_job_id, &error),
+        }
+    });
+    Ok(StartedJob { job_id })
+}
+
+#[tauri::command]
+pub fn start_edge_polish_preview_job(
+    document_id: String,
+    options: EdgePolishOptions,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> Result<StartedJob, String> {
+    let state = state.inner().clone();
+    let document = state.get(&document_id)?;
+    let memory = document
+        .lock()
+        .map_err(|_| "No se pudo leer el documento".to_string())?
+        .operation_memory_bytes()
+        .saturating_mul(2);
+    let job_id = state.jobs.create(
+        "edge_polish_preview",
+        "Previsualizar pulido de borde",
+        4,
+        memory,
+    )?;
+    let worker_job_id = job_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = (|| {
+            let cancel = state.jobs.cancellation_flag(&worker_job_id)?;
+            let document = document
+                .lock()
+                .map_err(|_| "No se pudo bloquear el documento".to_string())?;
+            revisions::verify(Some(expected_revision), document.revision).map_err(|conflict| {
+                format!(
+                    "{}: revisión actual {}",
+                    conflict.code, conflict.current_revision
+                )
+            })?;
+            let (preview, impact) = document.edge_polish_preview_rgba8(
+                &options,
+                &mut |stage, label, processed, total| {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err("JOB_CANCELLED".into());
+                    }
+                    state.jobs.progress(
+                        &worker_job_id,
+                        label,
+                        stage,
+                        processed,
+                        total,
+                        "filas/píxeles",
+                    )
+                },
+            )?;
+            Ok::<_, String>((
+                serde_json::to_value(impact).map_err(|error| error.to_string())?,
+                preview,
+            ))
+        })();
+        match result {
+            Ok((value, preview)) => {
+                let _ = state.jobs.complete(&worker_job_id, value, Some(preview));
+            }
+            Err(error) => state.jobs.fail(&worker_job_id, &error),
+        }
+    });
+    Ok(StartedJob { job_id })
+}
+
+#[tauri::command]
+pub fn start_edge_polish_apply_job(
+    document_id: String,
+    options: EdgePolishOptions,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> Result<StartedJob, String> {
+    let state = state.inner().clone();
+    let document = state.get(&document_id)?;
+    let memory = document
+        .lock()
+        .map_err(|_| "No se pudo leer el documento".to_string())?
+        .operation_memory_bytes()
+        .saturating_mul(2);
+    let job_id = state
+        .jobs
+        .create("edge_polish_apply", "Aplicar y verificar pulido", 5, memory)?;
+    let worker_job_id = job_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = (|| {
+            let cancel = state.jobs.cancellation_flag(&worker_job_id)?;
+            let mut document = document
+                .lock()
+                .map_err(|_| "No se pudo bloquear el documento".to_string())?;
+            revisions::verify(Some(expected_revision), document.revision).map_err(|conflict| {
+                format!(
+                    "{}: revisión actual {}",
+                    conflict.code, conflict.current_revision
+                )
+            })?;
+            let result = document.apply_edge_polish_with_progress(
+                &options,
+                &mut |stage, label, processed, total| {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err("JOB_CANCELLED".into());
+                    }
+                    state.jobs.progress(
+                        &worker_job_id,
+                        label,
+                        stage,
+                        processed,
+                        total,
+                        "filas/píxeles",
                     )
                 },
             )?;

@@ -52,3 +52,39 @@ pub async fn get_document_preview(
     .map_err(|error| format!("Falló la vista previa: {error}"))??;
     Ok(Response::new(bytes))
 }
+
+#[tauri::command]
+pub fn close_document(document_id: String, state: State<'_, AppState>) -> Result<bool, String> {
+    state.remove(&document_id)
+}
+
+#[tauri::command]
+pub async fn read_dropped_image(path: String) -> Result<Response, String> {
+    let path = std::path::PathBuf::from(path);
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(
+        extension.as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "tif" | "tiff"
+    ) {
+        return Err("Formato no admitido. Usá PNG, JPG, WebP, TIFF o BMP.".into());
+    }
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        let metadata = std::fs::metadata(&path)
+            .map_err(|error| format!("No se pudo leer el archivo arrastrado: {error}"))?;
+        if !metadata.is_file() {
+            return Err("El elemento arrastrado no es un archivo de imagen".into());
+        }
+        if metadata.len() > 512 * 1024 * 1024 {
+            return Err("La imagen supera el límite de seguridad de 512 MB".into());
+        }
+        std::fs::read(path)
+            .map_err(|error| format!("No se pudo abrir la imagen arrastrada: {error}"))
+    })
+    .await
+    .map_err(|error| format!("Falló la lectura del archivo arrastrado: {error}"))??;
+    Ok(Response::new(bytes))
+}

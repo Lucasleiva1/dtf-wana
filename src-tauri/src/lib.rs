@@ -1,6 +1,7 @@
 mod alpha_engine;
 mod application;
 mod commands;
+mod edge_polish_engine;
 mod image_engine;
 mod residue_engine;
 
@@ -15,6 +16,8 @@ pub fn run() {
             commands::dispatcher::dispatch_command,
             commands::document::upload_document_bytes,
             commands::document::get_document_preview,
+            commands::document::close_document,
+            commands::document::read_dropped_image,
             commands::residue::edit_residue_mask,
             commands::residue::get_residue_mask_tile,
             commands::residue::get_residue_mask_bytes,
@@ -25,6 +28,8 @@ pub fn run() {
             commands::jobs::start_export_job,
             commands::jobs::start_residue_cleanup_job,
             commands::jobs::start_apply_residue_job,
+            commands::jobs::start_edge_polish_preview_job,
+            commands::jobs::start_edge_polish_apply_job,
             commands::jobs::get_job_status,
             commands::jobs::cancel_job,
             commands::jobs::get_job_binary

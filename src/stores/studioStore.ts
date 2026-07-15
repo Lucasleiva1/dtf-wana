@@ -96,7 +96,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setDocument: (document) => {
     const previous = get().document;
     if (previous?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(previous.previewUrl);
-    set({ document, alphaAnalysis: null, alphaStatus: "idle", alphaError: null, alphaRegionIndex: 0, previewMode: "original", activeJob: null, transparencyFlow: "unprocessed", visualReviewComplete: false, residueMask: { selectedPixels: 0, selectedRegions: 0, hasSelection: false, canUndo: false, canRedo: false }, residueOverlay: null, residueOverlayVisible: true, history: document ? [`Abrir ${document.name}`] : [], future: [] });
+    if (typeof ImageBitmap !== "undefined" && previous?.renderBlob instanceof ImageBitmap) previous.renderBlob.close();
+    set({ document, activeTool: "select", alphaAnalysis: null, alphaStatus: "idle", alphaError: null, alphaRegionIndex: 0, previewMode: "original", activeJob: null, transparencyFlow: "unprocessed", visualReviewComplete: false, residueMask: { selectedPixels: 0, selectedRegions: 0, hasSelection: false, canUndo: false, canRedo: false }, residueOverlay: null, residueOverlayVisible: true, history: document ? [`Abrir ${document.name}`] : [], future: [], camera: document ? get().camera : initialCamera });
     queueMicrotask(() => get().fitDocument());
   },
   updateDocument: (patch) => set((state) => ({ document: state.document ? { ...state.document, ...patch } : null })),

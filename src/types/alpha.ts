@@ -94,7 +94,36 @@ export type TreatmentResult = {
   analysis: AlphaAnalysis;
 };
 
-export type PreviewMode = "original" | "result" | "partial_overlay" | "impact_overlay" | "alpha";
+export type EdgePolishIntensity = "soft" | "medium" | "strong";
+export type EdgePolishMethod = "binary_smoothing" | "majority_filter" | "spike_rounding";
+
+export type EdgePolishOptions = {
+  intensity: EdgePolishIntensity;
+  radius: 1 | 2 | 3;
+  method: EdgePolishMethod;
+  protectFineDetail: boolean;
+  protectConnectedTexture: boolean;
+};
+
+export type EdgePolishImpact = {
+  changedPixels: number;
+  becameTransparent: number;
+  becameOpaque: number;
+  protectedPixels: number;
+  boundaryPixelsBefore: number;
+  boundaryPixelsAfter: number;
+  jaggedPointsBefore: number;
+  jaggedPointsAfter: number;
+  verifiedBinary: boolean;
+};
+
+export type EdgePolishResult = {
+  revision: number;
+  impact: EdgePolishImpact;
+  analysis: AlphaAnalysis;
+};
+
+export type PreviewMode = "original" | "result" | "partial_overlay" | "impact_overlay" | "edge_polish_preview" | "alpha";
 
 export type JobStatus = "queued" | "running" | "completed" | "cancelled" | "failed";
 

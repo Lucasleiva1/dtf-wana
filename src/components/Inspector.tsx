@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ChevronLeft, ChevronRight, CircleCheck, Clock3, Eye, Layers3,
-  LoaderCircle, MemoryStick, Pause, ScanSearch, ShieldCheck, Sparkles, Trash2, X,
+  LoaderCircle, MemoryStick, Pause, ScanSearch, ShieldCheck, Sparkles, Trash2, WandSparkles, X,
 } from "lucide-react";
 import { getDocumentPreview } from "../lib/alphaService";
 import { cancelJob, runAnalysisJob, runPreviewJob, runTreatmentJob } from "../lib/jobService";
@@ -17,6 +17,7 @@ import type {
 import type { ModuleId } from "../types/document";
 import { InspectorZone } from "./InspectorZone";
 import { ResidueCleanup } from "./ResidueCleanup";
+import { EdgePolish } from "./EdgePolish";
 
 const tabs: Array<[ModuleId, string]> = [["background", "Quitar fondo"], ["transparency", "Transparencias"], ["separation", "Separar"]];
 const number = new Intl.NumberFormat("es-AR");
@@ -306,17 +307,27 @@ function TransparencyInspector() {
     : analysis
       ? "Máscara temporal sin aplicar"
       : "Disponible después del análisis";
+  const polishSummary = !analysis
+    ? "Bloqueado hasta verificar"
+    : analysis.verifiedSolidAlpha
+      ? "Opcional · alfa 0/255 verificado"
+      : `${number.format(analysis.partialAlphaPixels)} semitransparencias pendientes`;
+  const zoneMeta: Record<InspectorZoneId, { title: string; summary: string; icon: React.ReactNode }> = {
+    alpha: { title: "Tratamiento de transparencias", summary: alphaSummary, icon: <ScanSearch size={15} /> },
+    residue: { title: "Limpieza de residuos", summary: residueSummary, icon: <Trash2 size={15} /> },
+    polish: { title: "Pulido de borde", summary: polishSummary, icon: <WandSparkles size={15} /> },
+  };
 
   return (
     <div className="inspector-content transparency-inspector">
       <div className={`inspector-zone-stack${zoneDrag ? " is-reordering" : ""}`}>
-        {zoneDrag && <div className="zone-drag-ghost" style={{ left: zoneDrag.x + 10, top: zoneDrag.y + 10 }}>{zoneDrag.source === "alpha" ? "Tratamiento de transparencias" : "Limpieza de residuos"}</div>}
+        {zoneDrag && <div className="zone-drag-ghost" style={{ left: zoneDrag.x + 10, top: zoneDrag.y + 10 }}>{zoneMeta[zoneDrag.source].title}</div>}
         {zoneLayout.order.map((zoneId) => <InspectorZone
           key={zoneId}
           id={zoneId}
-          title={zoneId === "alpha" ? "Tratamiento de transparencias" : "Limpieza de residuos"}
-          summary={zoneId === "alpha" ? alphaSummary : residueSummary}
-          icon={zoneId === "alpha" ? <ScanSearch size={15} /> : <Trash2 size={15} />}
+          title={zoneMeta[zoneId].title}
+          summary={zoneMeta[zoneId].summary}
+          icon={zoneMeta[zoneId].icon}
           collapsed={zoneLayout.collapsed[zoneId]}
           dragging={zoneDrag?.source === zoneId}
           dropPosition={zoneDrag?.target === zoneId ? zoneDrag.position : null}
@@ -436,14 +447,14 @@ function TransparencyInspector() {
           <small className="microcopy">El documento no cambia hasta confirmar. La operación completa puede deshacerse.</small>
         </section>
       </>}
-          </> : analysis ? <ResidueCleanup
+          </> : zoneId === "residue" ? analysis ? <ResidueCleanup
             protectedRegionIds={protections.preservedRegionIds}
             onUnprotectCurrent={unprotectCurrentRegion}
           /> : <section className="residue-unavailable">
             <Trash2 size={20} />
             <b>Limpieza manual preparada</b>
             <p className="microcopy">Analizá primero el canal alfa para habilitar la detección y la máscara temporal de residuos.</p>
-          </section>}
+          </section> : <EdgePolish />}
         </InspectorZone>)}
       </div>
     </div>
