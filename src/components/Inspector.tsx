@@ -63,7 +63,7 @@ function TransparencyInspector() {
   const [reconstructionMode, setReconstructionMode] = useState<ReconstructionMode>("automatic");
   const [protections, setProtections] = useState(defaultProtections);
   const [impact, setImpact] = useState<TreatmentImpact | null>(null);
-  const [impactBlob, setImpactBlob] = useState<Blob | null>(null);
+  const [impactBlob, setImpactBlob] = useState<ImageBitmap | null>(null);
   const [previewDirty, setPreviewDirty] = useState(false);
   const [visualReviewed, setVisualReviewed] = useState(false);
   const previewSequence = useRef(0);
@@ -119,8 +119,8 @@ function TransparencyInspector() {
       const result = await runPreviewJob(document, treatment, (job) => setActiveJob(job));
       if (sequence !== previewSequence.current) return;
       setImpact(result.impact);
-      setImpactBlob(result.blob);
-      updateDocument({ renderBlob: result.blob, renderRevision: document.renderRevision + 1 });
+      setImpactBlob(result.bitmap);
+      updateDocument({ renderBlob: result.bitmap, renderRevision: document.renderRevision + 1 });
       setPreviewMode("impact_overlay");
       setStatus("complete");
       setFlow("preview_ready");
@@ -139,7 +139,7 @@ function TransparencyInspector() {
         setActiveJob(job);
         if (job.stageIndex >= 5) setFlow("verifying");
       });
-      const blob = await getDocumentPreview(document.id, "result");
+      const blob = await getDocumentPreview(document, "result");
       updateDocument({ revision: result.revision, dirty: true, renderBlob: blob, renderRevision: document.renderRevision + 1 });
       setAnalysis(result.analysis);
       setVisualReviewComplete(false);
@@ -167,7 +167,7 @@ function TransparencyInspector() {
         ? document.sourceFile
         : mode === "impact_overlay" && impactBlob
           ? impactBlob
-          : await getDocumentPreview(document.id, mode === "impact_overlay" ? "result" : mode);
+          : await getDocumentPreview(document, mode === "impact_overlay" ? "result" : mode);
       updateDocument({ renderBlob: blob, renderRevision: document.renderRevision + 1 });
       setPreviewMode(mode);
     } catch (reason) {

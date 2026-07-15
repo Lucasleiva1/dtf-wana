@@ -6,16 +6,28 @@ import { editResidueMask, refreshResiduePreview } from "../lib/residueService";
 import type { MaskMode, MaskPoint } from "../types/residue";
 
 type ResidueGesture = { tool: "residue-rectangle" | "residue-lasso" | "residue-brush"; points: MaskPoint[]; mode: MaskMode; pointerId: number };
+type PixiWorkspace = {
+  app: Application;
+  world: Container;
+  artboard: Graphics;
+  baseSprite?: Sprite;
+  overlayTiles: Map<string, Sprite>;
+};
+
+const MASK_TILE_SIZE = 512;
 
 export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const pixiRef = useRef<{ app: Application; world: Container; artboard: Graphics; sprite?: Sprite } | null>(null);
+  const pixiRef = useRef<PixiWorkspace | null>(null);
+  const [rendererReady, setRendererReady] = useState(0);
   const [rendererError, setRendererError] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [residueGesture, setResidueGesture] = useState<ResidueGesture | null>(null);
   const gestureRef = useRef<ResidueGesture | null>(null);
   const [cursorPoint, setCursorPoint] = useState<MaskPoint | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showMaskActivity, setShowMaskActivity] = useState(false);
+  const pendingMaskEdits = useRef(0);
   const document = useStudioStore((state) => state.document);
   const camera = useStudioStore((state) => state.camera);
   const previewBackground = useStudioStore((state) => state.previewBackground);
@@ -28,6 +40,9 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
   const residueMode = useStudioStore((state) => state.residueMaskMode);
   const residueBrushSize = useStudioStore((state) => state.residueBrushSize);
   const setResidueMaskMode = useStudioStore((state) => state.setResidueMaskMode);
+  const setRendererInfo = useStudioStore((state) => state.setRendererInfo);
+  const residueOverlay = useStudioStore((state) => state.residueOverlay);
+  const residueOverlayVisible = useStudioStore((state) => state.residueOverlayVisible);
   const scanning = activeJob?.operation === "alpha_analysis" && (activeJob.status === "queued" || activeJob.status === "running");
   const scanRatio = !activeJob || activeJob.stageIndex < 2
     ? 0
@@ -43,14 +58,29 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
     const app = new Application();
     const world = new Container();
     const artboard = new Graphics();
-    void app.init({ resizeTo: host, antialias: true, backgroundAlpha: 0, resolution: Math.min(devicePixelRatio, 2), autoDensity: true })
+    void app.init({
+      resizeTo: host,
+      preference: "webgl",
+      powerPreference: "high-performance",
+      antialias: false,
+      backgroundAlpha: 0,
+      resolution: Math.min(devicePixelRatio, 1.5),
+      autoDensity: true,
+    })
       .then(() => {
         initialized = true;
         if (disposed) return app.destroy(true);
         host.appendChild(app.canvas);
         app.stage.addChild(world);
+        world.sortableChildren = true;
+        artboard.zIndex = 10;
         world.addChild(artboard);
-        pixiRef.current = { app, world, artboard };
+        pixiRef.current = { app, world, artboard, overlayTiles: new Map() };
+        const gl = (app.renderer as unknown as { gl?: WebGL2RenderingContext }).gl;
+        const debugInfo = gl?.getExtension("WEBGL_debug_renderer_info") as { UNMASKED_RENDERER_WEBGL: number } | null;
+        const gpuName = gl && debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)) : "WebGL acelerado";
+        setRendererInfo(gpuName);
+        setRendererReady((value) => value + 1);
         setViewport({ width: host.clientWidth, height: host.clientHeight });
       })
       .catch(() => setRendererError(true));
@@ -63,7 +93,7 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
       pixiRef.current = null;
       if (initialized) app.destroy(true, { children: true });
     };
-  }, [setViewport]);
+  }, [setRendererInfo, setViewport]);
 
   useEffect(() => {
     const pixi = pixiRef.current;
@@ -76,15 +106,19 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
     const pixi = pixiRef.current;
     if (!pixi) return;
     let cancelled = false;
+    let swapped = false;
     const load = async () => {
       setImageError(null);
-      if (pixi.sprite) {
-        pixi.world.removeChild(pixi.sprite);
-        pixi.sprite.destroy({ texture: true, textureSource: true });
-        pixi.sprite = undefined;
+      if (!document) {
+        if (pixi.baseSprite) {
+          pixi.world.removeChild(pixi.baseSprite);
+          pixi.baseSprite.destroy({ texture: true, textureSource: true });
+          pixi.baseSprite = undefined;
+        }
+        pixi.artboard.clear();
+        return;
       }
       pixi.artboard.clear();
-      if (!document) return;
       pixi.artboard.rect(0, 0, document.width, document.height).stroke({ color: 0x8f8a83, width: 1 });
       const bitmap = await createImageBitmap(document.renderBlob);
       if (cancelled || !pixiRef.current || pixiRef.current !== pixi) {
@@ -95,12 +129,128 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
       const sprite = new Sprite(texture);
       sprite.width = document.width;
       sprite.height = document.height;
+      sprite.zIndex = 0;
+      sprite.visible = false;
       pixi.world.addChild(sprite);
-      pixi.sprite = sprite;
+      const previous = pixi.baseSprite;
+      requestAnimationFrame(() => {
+        if (cancelled || pixiRef.current !== pixi) {
+          pixi.world.removeChild(sprite);
+          sprite.destroy({ texture: true, textureSource: true });
+          return;
+        }
+        sprite.visible = true;
+        pixi.baseSprite = sprite;
+        swapped = true;
+        if (previous && previous !== sprite) {
+          pixi.world.removeChild(previous);
+          previous.destroy({ texture: true, textureSource: true });
+        }
+      });
     };
     void load().catch((reason) => setImageError(reason instanceof Error ? reason.message : "No se pudo mostrar la imagen."));
+    return () => { cancelled = true; if (!swapped) { /* la textura anterior permanece visible */ } };
+  }, [document?.id, document?.renderRevision, rendererReady]);
+
+  useEffect(() => {
+    const pixi = pixiRef.current;
+    if (!pixi || !document || !residueOverlay || residueOverlay.documentId !== document.id) return;
+    let cancelled = false;
+    const replaceTile = async (x: number, y: number, width: number, height: number, mask: Uint8Array) => {
+      const key = `${x}:${y}`;
+      const previous = pixi.overlayTiles.get(key);
+      let hasSelection = false;
+      const rgba = new Uint8ClampedArray(width * height * 4);
+      for (let index = 0; index < mask.length; index += 1) {
+        if (mask[index] === 0) continue;
+        hasSelection = true;
+        const offset = index * 4;
+        rgba[offset] = 255;
+        rgba[offset + 1] = 35;
+        rgba[offset + 2] = 45;
+        rgba[offset + 3] = 210;
+      }
+      if (!hasSelection) {
+        if (previous) {
+          pixi.overlayTiles.delete(key);
+          pixi.world.removeChild(previous);
+          previous.destroy({ texture: true, textureSource: true });
+        }
+        return;
+      }
+      const bitmap = await createImageBitmap(new ImageData(rgba, width, height));
+      if (cancelled || pixiRef.current !== pixi) { bitmap.close(); return; }
+      const sprite = new Sprite(Texture.from(bitmap));
+      sprite.x = x;
+      sprite.y = y;
+      sprite.width = width;
+      sprite.height = height;
+      sprite.zIndex = 20;
+      sprite.visible = false;
+      pixi.world.addChild(sprite);
+      requestAnimationFrame(() => {
+        if (cancelled || pixiRef.current !== pixi) {
+          pixi.world.removeChild(sprite);
+          sprite.destroy({ texture: true, textureSource: true });
+          return;
+        }
+        sprite.visible = residueOverlayVisible;
+        pixi.overlayTiles.set(key, sprite);
+        if (previous && previous !== sprite) {
+          pixi.world.removeChild(previous);
+          previous.destroy({ texture: true, textureSource: true });
+        }
+      });
+    };
+    const update = async () => {
+      const yieldFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (residueOverlay.clear) {
+        for (const sprite of pixi.overlayTiles.values()) {
+          pixi.world.removeChild(sprite);
+          sprite.destroy({ texture: true, textureSource: true });
+        }
+        pixi.overlayTiles.clear();
+        return;
+      }
+      if (residueOverlay.fullMask) {
+        const nextKeys = new Set<string>();
+        let processedTiles = 0;
+        for (let y = 0; y < residueOverlay.height; y += MASK_TILE_SIZE) {
+          for (let x = 0; x < residueOverlay.width; x += MASK_TILE_SIZE) {
+            const width = Math.min(MASK_TILE_SIZE, residueOverlay.width - x);
+            const height = Math.min(MASK_TILE_SIZE, residueOverlay.height - y);
+            const tile = new Uint8Array(width * height);
+            for (let row = 0; row < height; row += 1) {
+              const sourceStart = (y + row) * residueOverlay.width + x;
+              tile.set(residueOverlay.fullMask.subarray(sourceStart, sourceStart + width), row * width);
+            }
+            nextKeys.add(`${x}:${y}`);
+            await replaceTile(x, y, width, height, tile);
+            processedTiles += 1;
+            if (processedTiles % 2 === 0) await yieldFrame();
+          }
+        }
+        for (const [key, sprite] of pixi.overlayTiles) {
+          if (nextKeys.has(key)) continue;
+          pixi.overlayTiles.delete(key);
+          pixi.world.removeChild(sprite);
+          sprite.destroy({ texture: true, textureSource: true });
+        }
+      } else if (residueOverlay.tiles) {
+        for (const tile of residueOverlay.tiles) {
+          await replaceTile(tile.x, tile.y, tile.width, tile.height, tile.bytes);
+        }
+      }
+    };
+    void update().catch((reason) => setImageError(reason instanceof Error ? reason.message : "No se pudo actualizar la máscara GPU."));
     return () => { cancelled = true; };
-  }, [document]);
+  }, [document?.id, rendererReady, residueOverlay?.revision]);
+
+  useEffect(() => {
+    const pixi = pixiRef.current;
+    if (!pixi) return;
+    for (const sprite of pixi.overlayTiles.values()) sprite.visible = residueOverlayVisible;
+  }, [residueOverlayVisible]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -160,6 +310,8 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
       return { x, y };
     };
     const edit = async (maskEdit: Parameters<typeof editResidueMask>[1]) => {
+      pendingMaskEdits.current += 1;
+      const activityTimer = window.setTimeout(() => setShowMaskActivity(true), 150);
       try {
         const latest = useStudioStore.getState().document;
         if (!latest) return;
@@ -167,6 +319,10 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
         await refreshResiduePreview(latest, summary);
       } catch (reason) {
         useStudioStore.getState().setNotification({ kind: "error", text: reason instanceof Error ? reason.message : String(reason) });
+      } finally {
+        window.clearTimeout(activityTimer);
+        pendingMaskEdits.current -= 1;
+        if (pendingMaskEdits.current === 0) setShowMaskActivity(false);
       }
     };
     const down = (event: PointerEvent) => {
@@ -201,14 +357,16 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
       const gesture = gestureRef.current;
       if (!gesture || event.pointerId !== gesture.pointerId) return;
       gestureRef.current = null;
-      setResidueGesture(null);
+      let operation: Promise<void> | null = null;
       if (gesture.tool === "residue-rectangle") {
-        void edit({ action: "rectangle", start: gesture.points[0], end: gesture.points[gesture.points.length - 1], mode: gesture.mode });
+        operation = edit({ action: "rectangle", start: gesture.points[0], end: gesture.points[gesture.points.length - 1], mode: gesture.mode });
       } else if (gesture.tool === "residue-lasso" && gesture.points.length >= 3) {
-        void edit({ action: "lasso", points: gesture.points, mode: gesture.mode });
+        operation = edit({ action: "lasso", points: gesture.points, mode: gesture.mode });
       } else if (gesture.tool === "residue-brush") {
-        void edit({ action: "brush", points: gesture.points, radius: Math.max(1, Math.round(residueBrushSize / 2)), mode: gesture.mode });
+        operation = edit({ action: "brush", points: gesture.points, radius: Math.max(1, Math.round(residueBrushSize / 2)), mode: gesture.mode });
       }
+      if (operation) void operation.finally(() => setResidueGesture(null));
+      else setResidueGesture(null);
     };
     const leave = () => { if (!gestureRef.current) setCursorPoint(null); };
     const context = (event: MouseEvent) => {
@@ -261,6 +419,7 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
         <button onClick={() => { setResidueMaskMode("subtract"); setContextMenu(null); }}>Quitar de eliminación</button>
         <button onClick={() => { const latest = useStudioStore.getState().document; if (latest) void editResidueMask(latest, { action: "clear" }).then((summary) => refreshResiduePreview(latest, summary)); setContextMenu(null); }}>Deseleccionar todo</button>
       </div>}
+      {showMaskActivity && <div className="mask-update-indicator">Actualizando máscara…</div>}
       {rendererError && <div className="renderer-error">WebGL no está disponible. Se habilitará el fallback 2D.</div>}
       {imageError && <div className="renderer-error">No se pudo crear la vista previa: {imageError}</div>}
     </div>

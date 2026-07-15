@@ -13,7 +13,7 @@ export type StudioDocument = {
   height: number;
   previewUrl: string;
   sourceFile: File;
-  renderBlob: Blob;
+  renderBlob: Blob | ImageBitmap;
   renderRevision: number;
   format: string;
   bitDepth: 8 | 16;

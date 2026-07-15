@@ -62,7 +62,7 @@ pub fn start_alpha_analysis_job(
                 1,
                 "vista",
             )?;
-            let _preview = document.preview_png("partial_overlay")?;
+            let _preview = document.preview_rgba8("partial_overlay");
             state.jobs.progress(
                 &worker_job_id,
                 "Generando previsualización",
@@ -112,7 +112,7 @@ pub fn start_alpha_preview_job(
                     conflict.code, conflict.current_revision
                 )
             })?;
-            let (preview, impact) = document.treatment_preview_png(
+            let (preview, impact) = document.treatment_preview_rgba8(
                 &treatment,
                 &mut |stage, label, processed, total| {
                     if cancel.load(Ordering::Relaxed) {
@@ -244,10 +244,10 @@ pub fn start_residue_cleanup_job(
                     )
                 },
             )?;
-            let preview = document.residue_preview_png()?;
+            let mask = document.residue_mask_bytes();
             Ok::<_, String>((
                 serde_json::to_value(summary).map_err(|e| e.to_string())?,
-                preview,
+                mask,
             ))
         })();
         match result {

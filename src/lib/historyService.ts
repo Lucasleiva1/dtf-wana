@@ -36,7 +36,7 @@ export async function changePixelHistory(direction: "undo" | "redo"): Promise<vo
     const latest = useStudioStore.getState();
     const preview = latest.previewMode === "original"
       ? document.sourceFile
-      : await getDocumentPreview(document.id, latest.previewMode);
+      : await getDocumentPreview(document, latest.previewMode);
     latest.updateDocument({
       revision: response.data.revision,
       dirty: response.data.revision > 0,

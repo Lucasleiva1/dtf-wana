@@ -79,6 +79,22 @@ pub struct MaskSummary {
     pub can_redo: bool,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirtyRect {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MaskEditResult {
+    pub summary: MaskSummary,
+    pub dirty_rect: Option<DirtyRect>,
+}
+
 #[derive(Clone, Copy)]
 struct MaskValue([u8; 3]);
 
@@ -101,6 +117,8 @@ pub struct ResidueMask {
     manual_remove: Vec<u8>,
     history: Vec<MaskHistoryEntry>,
     future: Vec<MaskHistoryEntry>,
+    selected_pixels: u64,
+    selected_regions_cache: u32,
 }
 
 impl ResidueMask {
@@ -111,6 +129,8 @@ impl ResidueMask {
             manual_remove: vec![0; pixel_count],
             history: Vec::new(),
             future: Vec::new(),
+            selected_pixels: 0,
+            selected_regions_cache: 0,
         }
     }
 
@@ -163,7 +183,12 @@ impl ResidueMask {
         }
     }
 
-    fn commit<F>(&mut self, candidates: impl IntoIterator<Item = usize>, mut update: F)
+    fn commit<F>(
+        &mut self,
+        candidates: impl IntoIterator<Item = usize>,
+        width: u32,
+        mut update: F,
+    ) -> Option<DirtyRect>
     where
         F: FnMut(&mut Self, usize),
     {
@@ -179,6 +204,7 @@ impl ResidueMask {
             update(self, index);
             let after = self.value(index);
             if before.0 != after.0 {
+                self.adjust_selected_count(before, after);
                 changes.push(MaskChange {
                     index,
                     before,
@@ -186,6 +212,7 @@ impl ResidueMask {
                 });
             }
         }
+        let dirty_rect = bounds_for_changes(&changes, width);
         if !changes.is_empty() {
             self.history.push(MaskHistoryEntry { changes });
             self.future.clear();
@@ -193,26 +220,43 @@ impl ResidueMask {
                 self.history.remove(0);
             }
         }
+        dirty_rect
     }
 
-    fn undo(&mut self) {
+    fn undo(&mut self, width: u32) -> Option<DirtyRect> {
         let Some(entry) = self.history.pop() else {
-            return;
+            return None;
         };
+        let dirty_rect = bounds_for_changes(&entry.changes, width);
         for change in &entry.changes {
+            let current = self.value(change.index);
             self.set_value(change.index, change.before);
+            self.adjust_selected_count(current, change.before);
         }
         self.future.push(entry);
+        dirty_rect
     }
 
-    fn redo(&mut self) {
+    fn redo(&mut self, width: u32) -> Option<DirtyRect> {
         let Some(entry) = self.future.pop() else {
-            return;
+            return None;
         };
+        let dirty_rect = bounds_for_changes(&entry.changes, width);
         for change in &entry.changes {
+            let current = self.value(change.index);
             self.set_value(change.index, change.after);
+            self.adjust_selected_count(current, change.after);
         }
         self.history.push(entry);
+        dirty_rect
+    }
+
+    fn adjust_selected_count(&mut self, before: MaskValue, after: MaskValue) {
+        match (mask_value_selected(before), mask_value_selected(after)) {
+            (false, true) => self.selected_pixels += 1,
+            (true, false) => self.selected_pixels = self.selected_pixels.saturating_sub(1),
+            _ => {}
+        }
     }
 }
 
@@ -222,41 +266,43 @@ pub fn edit_mask(
     width: u32,
     height: u32,
     edit: &MaskEdit,
-) -> MaskSummary {
+) -> MaskEditResult {
     mask.ensure_len((width as usize).saturating_mul(height as usize));
-    match edit {
-        MaskEdit::Undo => mask.undo(),
-        MaskEdit::Redo => mask.redo(),
+    let dirty_rect = match edit {
+        MaskEdit::Undo => mask.undo(width),
+        MaskEdit::Redo => mask.redo(width),
         MaskEdit::Clear => {
             let indices = (0..mask.automatic.len())
                 .filter(|&i| mask.is_selected(i) || mask.manual_remove[i] != 0);
-            mask.commit(indices.collect::<Vec<_>>(), |state, index| {
+            mask.commit(indices.collect::<Vec<_>>(), width, |state, index| {
                 state.set_value(index, MaskValue([0, 0, 0]))
-            });
+            })
         }
         MaskEdit::SelectAll => {
             let indices = (0..mask.automatic.len())
                 .filter(|&i| alpha_nonzero(pixels, i))
                 .collect::<Vec<_>>();
-            mask.commit(indices, |state, index| {
+            mask.commit(indices, width, |state, index| {
                 state.set_manual(index, MaskMode::Add)
-            });
+            })
         }
         MaskEdit::Invert => {
             let indices = (0..mask.automatic.len())
                 .filter(|&i| alpha_nonzero(pixels, i))
                 .collect::<Vec<_>>();
-            mask.commit(indices, |state, index| {
+            mask.commit(indices, width, |state, index| {
                 if state.is_selected(index) {
                     state.set_manual(index, MaskMode::Subtract);
                 } else {
                     state.set_manual(index, MaskMode::Add);
                 }
-            });
+            })
         }
         MaskEdit::Component { x, y, mode } => {
             let indices = connected_component(pixels, width, height, *x, *y);
-            mask.commit(indices, |state, index| state.set_manual(index, *mode));
+            mask.commit(indices, width, |state, index| {
+                state.set_manual(index, *mode)
+            })
         }
         MaskEdit::Rectangle { start, end, mode } => {
             let min_x = start.x.min(end.x).floor().max(0.0) as u32;
@@ -272,7 +318,9 @@ pub fn edit_mask(
                     }
                 }
             }
-            mask.commit(indices, |state, index| state.set_manual(index, *mode));
+            mask.commit(indices, width, |state, index| {
+                state.set_manual(index, *mode)
+            })
         }
         MaskEdit::Lasso { points, mode } => {
             if points.len() >= 3 {
@@ -311,7 +359,11 @@ pub fn edit_mask(
                         }
                     }
                 }
-                mask.commit(indices, |state, index| state.set_manual(index, *mode));
+                mask.commit(indices, width, |state, index| {
+                    state.set_manual(index, *mode)
+                })
+            } else {
+                None
             }
         }
         MaskEdit::Brush {
@@ -320,10 +372,15 @@ pub fn edit_mask(
             mode,
         } => {
             let indices = brush_indices(points, (*radius).clamp(1, 500), width, height, pixels);
-            mask.commit(indices, |state, index| state.set_manual(index, *mode));
+            mask.commit(indices, width, |state, index| {
+                state.set_manual(index, *mode)
+            })
         }
+    };
+    MaskEditResult {
+        summary: fast_summary(mask),
+        dirty_rect,
     }
-    summary(mask, width, height)
 }
 
 pub fn classify_residues(
@@ -431,7 +488,7 @@ pub fn classify_residues(
         progress(4, "Incluyendo zonas protegidas seleccionadas", 1, 1)?;
     }
     let indices = 0..len;
-    mask.commit(indices, |state, index| {
+    mask.commit(indices, width, |state, index| {
         state.automatic[index] = automatic[index]
     });
     progress(
@@ -440,7 +497,24 @@ pub fn classify_residues(
         height as u64,
         height as u64,
     )?;
-    Ok(summary(mask, width, height))
+    Ok(refresh_summary(mask, width, height))
+}
+
+pub fn fast_summary(mask: &ResidueMask) -> MaskSummary {
+    MaskSummary {
+        selected_pixels: mask.selected_pixels,
+        selected_regions: mask.selected_regions_cache,
+        has_selection: mask.selected_pixels > 0,
+        can_undo: !mask.history.is_empty(),
+        can_redo: !mask.future.is_empty(),
+    }
+}
+
+pub fn refresh_summary(mask: &mut ResidueMask, width: u32, height: u32) -> MaskSummary {
+    let summary = summary(mask, width, height);
+    mask.selected_pixels = summary.selected_pixels;
+    mask.selected_regions_cache = summary.selected_regions;
+    summary
 }
 
 pub fn summary(mask: &ResidueMask, width: u32, height: u32) -> MaskSummary {
@@ -462,18 +536,54 @@ pub fn summary(mask: &ResidueMask, width: u32, height: u32) -> MaskSummary {
     }
 }
 
-pub fn preview_rgba8(mask: &ResidueMask, pixels: &PixelBuffer) -> Vec<u8> {
-    let mut rgba = base_rgba8(pixels);
-    for index in 0..mask.automatic.len() {
-        if mask.is_selected(index) {
-            let offset = index * 4;
-            rgba[offset] = 255;
-            rgba[offset + 1] = 35;
-            rgba[offset + 2] = 45;
-            rgba[offset + 3] = 255;
+pub fn mask_bytes(mask: &ResidueMask) -> Vec<u8> {
+    (0..mask.automatic.len())
+        .map(|index| if mask.is_selected(index) { 255 } else { 0 })
+        .collect()
+}
+
+pub fn mask_tile(
+    mask: &ResidueMask,
+    document_width: u32,
+    document_height: u32,
+    rect: DirtyRect,
+) -> Vec<u8> {
+    let width = rect.width.min(document_width.saturating_sub(rect.x));
+    let height = rect.height.min(document_height.saturating_sub(rect.y));
+    let mut bytes = Vec::with_capacity(width as usize * height as usize);
+    for y in rect.y..rect.y + height {
+        for x in rect.x..rect.x + width {
+            let index = y as usize * document_width as usize + x as usize;
+            bytes.push(if mask.is_selected(index) { 255 } else { 0 });
         }
     }
-    rgba
+    bytes
+}
+
+fn bounds_for_changes(changes: &[MaskChange], width: u32) -> Option<DirtyRect> {
+    let first = changes.first()?;
+    let mut min_x = first.index as u32 % width;
+    let mut max_x = min_x;
+    let mut min_y = first.index as u32 / width;
+    let mut max_y = min_y;
+    for change in &changes[1..] {
+        let x = change.index as u32 % width;
+        let y = change.index as u32 / width;
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
+    }
+    Some(DirtyRect {
+        x: min_x,
+        y: min_y,
+        width: max_x - min_x + 1,
+        height: max_y - min_y + 1,
+    })
+}
+
+fn mask_value_selected(value: MaskValue) -> bool {
+    value.0[1] != 0 || (value.0[0] != 0 && value.0[2] == 0)
 }
 
 fn alpha_nonzero(pixels: &PixelBuffer, index: usize) -> bool {
@@ -720,13 +830,6 @@ fn binary_components(mask: &[bool], width: u32, height: u32) -> Vec<Vec<usize>> 
     components
 }
 
-fn base_rgba8(pixels: &PixelBuffer) -> Vec<u8> {
-    match pixels {
-        PixelBuffer::Rgba8(values) => values.clone(),
-        PixelBuffer::Rgba16(values) => values.iter().map(|value| (value >> 8) as u8).collect(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -754,10 +857,11 @@ mod tests {
                 mode: MaskMode::Add,
             },
         );
-        assert_eq!(selected.selected_pixels, 2);
+        assert_eq!(selected.summary.selected_pixels, 2);
+        assert_eq!(selected.dirty_rect.unwrap().height, 2);
         let undone = edit_mask(&mut mask, &image, 8, 8, &MaskEdit::Undo);
-        assert_eq!(undone.selected_pixels, 0);
-        assert!(undone.can_redo);
+        assert_eq!(undone.summary.selected_pixels, 0);
+        assert!(undone.summary.can_redo);
     }
 
     #[test]
@@ -790,5 +894,35 @@ mod tests {
             },
         );
         assert!(!mask.is_selected(5 * 20 + 5));
+    }
+
+    #[test]
+    fn large_document_brush_returns_only_a_small_dirty_rectangle() {
+        let width = 4488usize;
+        let height = 4488usize;
+        let image = PixelBuffer::Rgba8(vec![255; width * height * 4]);
+        let mut mask = ResidueMask::new(width * height);
+        let result = edit_mask(
+            &mut mask,
+            &image,
+            width as u32,
+            height as u32,
+            &MaskEdit::Brush {
+                points: vec![
+                    MaskPoint { x: 100.0, y: 100.0 },
+                    MaskPoint { x: 160.0, y: 130.0 },
+                ],
+                radius: 12,
+                mode: MaskMode::Add,
+            },
+        );
+        let dirty = result.dirty_rect.unwrap();
+        assert!(dirty.width <= 90);
+        assert!(dirty.height <= 60);
+        assert!(result.summary.selected_pixels > 0);
+        assert_eq!(
+            mask_tile(&mask, width as u32, height as u32, dirty).len(),
+            (dirty.width * dirty.height) as usize
+        );
     }
 }

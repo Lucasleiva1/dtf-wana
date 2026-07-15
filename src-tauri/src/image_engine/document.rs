@@ -6,7 +6,9 @@ use serde::Serialize;
 use crate::alpha_engine::{self, AlphaAnalysis, AlphaTreatment, ProgressCallback, TreatmentImpact};
 #[cfg(test)]
 use crate::alpha_engine::{ProtectionOptions, ReconstructionMode};
-use crate::residue_engine::{self, MaskEdit, MaskSummary, ResidueCleanupOptions, ResidueMask};
+use crate::residue_engine::{
+    self, DirtyRect, MaskEdit, MaskEditResult, MaskSummary, ResidueCleanupOptions, ResidueMask,
+};
 
 #[derive(Clone)]
 pub enum PixelBuffer {
@@ -286,7 +288,7 @@ impl ImageDocument {
         true
     }
 
-    pub fn edit_residue_mask(&mut self, edit: &MaskEdit) -> MaskSummary {
+    pub fn edit_residue_mask(&mut self, edit: &MaskEdit) -> MaskEditResult {
         residue_engine::edit_mask(
             &mut self.residue_mask,
             &self.working,
@@ -298,6 +300,10 @@ impl ImageDocument {
 
     pub fn residue_mask_summary(&self) -> MaskSummary {
         residue_engine::summary(&self.residue_mask, self.width, self.height)
+    }
+
+    pub fn refresh_residue_mask_summary(&mut self) -> MaskSummary {
+        residue_engine::refresh_summary(&mut self.residue_mask, self.width, self.height)
     }
 
     pub fn classify_residues_with_progress(
@@ -321,9 +327,12 @@ impl ImageDocument {
         )
     }
 
-    pub fn residue_preview_png(&self) -> Result<Vec<u8>, String> {
-        let rgba = residue_engine::preview_rgba8(&self.residue_mask, &self.working);
-        encode_preview_png(self.width, self.height, &rgba)
+    pub fn residue_mask_bytes(&self) -> Vec<u8> {
+        residue_engine::mask_bytes(&self.residue_mask)
+    }
+
+    pub fn residue_mask_tile(&self, rect: DirtyRect) -> Vec<u8> {
+        residue_engine::mask_tile(&self.residue_mask, self.width, self.height, rect)
     }
 
     pub fn apply_residue_mask_with_progress(
@@ -431,19 +440,18 @@ impl ImageDocument {
         })
     }
 
-    pub fn preview_png(&self, mode: &str) -> Result<Vec<u8>, String> {
-        let rgba = alpha_engine::preview_rgba8(
+    pub fn preview_rgba8(&self, mode: &str) -> Vec<u8> {
+        alpha_engine::preview_rgba8(
             if mode == "original" {
                 &self.original
             } else {
                 &self.working
             },
             mode,
-        );
-        encode_preview_png(self.width, self.height, &rgba)
+        )
     }
 
-    pub fn treatment_preview_png(
+    pub fn treatment_preview_rgba8(
         &self,
         treatment: &AlphaTreatment,
         progress: &mut ProgressCallback<'_>,
@@ -463,10 +471,9 @@ impl ImageDocument {
             self.height as u64,
             self.height as u64,
         )?;
-        progress(4, "Codificando previsualización", 0, 1)?;
-        let png = encode_preview_png(self.width, self.height, &rgba)?;
-        progress(4, "Codificando previsualización", 1, 1)?;
-        Ok((png, plan.impact))
+        progress(4, "Preparando textura de previsualización", 0, 1)?;
+        progress(4, "Preparando textura de previsualización", 1, 1)?;
+        Ok((rgba, plan.impact))
     }
 
     pub fn operation_memory_bytes(&self) -> u64 {
@@ -606,21 +613,6 @@ impl ImageDocument {
         }
         Ok(bytes)
     }
-}
-
-fn encode_preview_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut bytes, width, height);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder.set_compression(png::Compression::Fastest);
-        let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
-        writer
-            .write_image_data(rgba)
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(bytes)
 }
 
 fn to_rgba16(image: DynamicImage) -> Vec<u16> {

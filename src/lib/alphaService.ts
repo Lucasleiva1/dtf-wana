@@ -5,6 +5,7 @@ import type { StudioDocument } from "../types/document";
 import { dispatchCommand } from "./commandBus";
 import { runExportJob } from "./jobService";
 import type { JobSnapshot } from "../types/alpha";
+import { rgbaBytesToBitmap } from "./bitmapService";
 
 export type ImportedEngineDocument = {
   documentId: string;
@@ -47,10 +48,10 @@ export async function applyTreatment(document: StudioDocument, treatment: AlphaT
   return result.data as TreatmentResult;
 }
 
-export async function getDocumentPreview(documentId: string, mode: PreviewMode): Promise<Blob> {
+export async function getDocumentPreview(document: Pick<StudioDocument, "id" | "width" | "height">, mode: PreviewMode): Promise<ImageBitmap> {
   if (!window.__TAURI_INTERNALS__) throw new Error("La vista procesada requiere la aplicación de escritorio.");
-  const bytes = await invoke<ArrayBuffer>("get_document_preview", { documentId, mode });
-  return new Blob([bytes], { type: "image/png" });
+  const bytes = await invoke<ArrayBuffer>("get_document_preview", { documentId: document.id, mode });
+  return rgbaBytesToBitmap(bytes, document.width, document.height);
 }
 
 export async function exportVerifiedDocument(document: StudioDocument, onProgress?: (job: JobSnapshot<ExportVerification>) => void): Promise<ExportVerification | null> {

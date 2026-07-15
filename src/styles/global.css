@@ -93,6 +93,7 @@ button:disabled { color: var(--text-disabled); cursor: not-allowed; }
 .canvas-context-menu button { display: flex; justify-content: space-between; gap: 14px; min-height: 29px; padding: 5px 8px; color: var(--text-primary); border: 0; background: transparent; text-align: left; font-size: 10px; }
 .canvas-context-menu button:hover { background: #513722; }
 .canvas-context-menu kbd { color: var(--text-disabled); font: inherit; }
+.mask-update-indicator { position: absolute; z-index: 8; right: 12px; bottom: 12px; padding: 6px 9px; color: #ffd6b6; border: 1px solid #855a38; background: #34261ddd; font-size: 9px; pointer-events: none; }
 .empty-canvas { position: absolute; z-index: 3; inset: 50% auto auto 50%; transform: translate(-50%,-50%); display: flex; flex-direction: column; align-items: center; gap: 9px; min-width: 260px; padding: 28px 38px; color: var(--text-secondary); border: 1px dashed #55514c; background: rgba(27,26,24,.88); }
 .empty-canvas:hover { color: var(--text-primary); border-color: var(--accent-primary); background: #25221f; }
 .empty-canvas span { color: var(--text-primary); font-size: 14px; font-weight: 600; }.empty-canvas small { font-size: 11px; }

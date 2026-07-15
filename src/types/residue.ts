@@ -18,6 +18,25 @@ export type MaskSummary = {
   canRedo: boolean;
 };
 
+export type DirtyRect = { x: number; y: number; width: number; height: number };
+
+export type MaskEditResult = {
+  summary: MaskSummary;
+  dirtyRect: DirtyRect | null;
+};
+
+export type MaskTilePatch = DirtyRect & { bytes: Uint8Array };
+
+export type ResidueOverlayUpdate = {
+  revision: number;
+  documentId: string;
+  clear?: boolean;
+  tiles?: MaskTilePatch[];
+  fullMask?: Uint8Array;
+  width: number;
+  height: number;
+};
+
 export type ResidueCleanupOptions = {
   isolatedParticles: boolean;
   weakEdgeFragments: boolean;
@@ -36,4 +55,3 @@ export type ResidueApplyResult = {
   removedRegions: number;
   analysis: AlphaAnalysis;
 };
-

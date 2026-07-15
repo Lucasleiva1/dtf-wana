@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { BoxSelect, CircleDot, Eraser, Eye, Lasso, MousePointer2, Paintbrush, Redo2, ShieldOff, Trash2, Undo2 } from "lucide-react";
 import { getDocumentPreview } from "../lib/alphaService";
 import { runApplyResidueJob, runResidueCleanupJob } from "../lib/jobService";
-import { editResidueMask, getResidueMaskPreview, refreshResiduePreview } from "../lib/residueService";
+import { editResidueMask, refreshResiduePreview } from "../lib/residueService";
 import { useStudioStore } from "../stores/studioStore";
 import type { ToolId } from "../types/document";
 import type { MaskEdit, ResidueCleanupOptions } from "../types/residue";
@@ -39,6 +39,9 @@ export function ResidueCleanup({ protectedRegionIds, onUnprotectCurrent }: { pro
   const setNotification = useStudioStore((state) => state.setNotification);
   const setFlow = useStudioStore((state) => state.setTransparencyFlow);
   const setVisualReviewComplete = useStudioStore((state) => state.setVisualReviewComplete);
+  const setResidueOverlay = useStudioStore((state) => state.setResidueOverlay);
+  const clearResidueOverlay = useStudioStore((state) => state.clearResidueOverlay);
+  const setResidueOverlayVisible = useStudioStore((state) => state.setResidueOverlayVisible);
   const [options, setOptions] = useState(initialOptions);
 
   useEffect(() => setOptions((current) => ({ ...current, protectedRegionIds })), [protectedRegionIds]);
@@ -58,7 +61,7 @@ export function ResidueCleanup({ protectedRegionIds, onUnprotectCurrent }: { pro
     try {
       const result = await runResidueCleanupJob(document, { ...options, protectedRegionIds }, setActiveJob);
       setSummary(result.summary);
-      updateDocument({ renderBlob: result.blob, renderRevision: document.renderRevision + 1 });
+      setResidueOverlay({ documentId: document.id, width: document.width, height: document.height, fullMask: result.mask });
       setNotification({ kind: "info", text: result.summary.hasSelection
         ? `Previsualización lista: ${number.format(result.summary.selectedPixels)} píxeles en ${number.format(result.summary.selectedRegions)} regiones.`
         : "No se detectaron residuos con estos parámetros." });
@@ -76,10 +79,11 @@ export function ResidueCleanup({ protectedRegionIds, onUnprotectCurrent }: { pro
         setActiveJob(job);
         if (job.stageIndex >= 2) setFlow("verifying");
       });
-      const blob = await getDocumentPreview(latest.id, "result");
+      const blob = await getDocumentPreview(latest, "result");
       updateDocument({ revision: result.revision, dirty: true, renderBlob: blob, renderRevision: latest.renderRevision + 1 });
       setAnalysis(result.analysis);
       setSummary({ selectedPixels: 0, selectedRegions: 0, hasSelection: false, canUndo: false, canRedo: false });
+      clearResidueOverlay();
       setVisualReviewComplete(false);
       pushHistory(`Limpiar ${number.format(result.removedRegions)} regiones de residuos`);
       setFlow(result.analysis.verifiedSolidAlpha ? "technical_result" : "recommendation_available");
@@ -95,16 +99,7 @@ export function ResidueCleanup({ protectedRegionIds, onUnprotectCurrent }: { pro
     return () => window.removeEventListener("dtf:apply-residue", listener);
   });
 
-  const compare = async (showOriginal: boolean) => {
-    const latest = useStudioStore.getState().document;
-    if (!latest) return;
-    try {
-      const blob = showOriginal ? await getDocumentPreview(latest.id, "result") : await getResidueMaskPreview(latest.id);
-      updateDocument({ renderBlob: blob, renderRevision: latest.renderRevision + 1 });
-    } catch (reason) {
-      setNotification({ kind: "error", text: messageOf(reason) });
-    }
-  };
+  const compare = (showOriginal: boolean) => setResidueOverlayVisible(!showOriginal);
 
   const toolButtons: Array<[ToolId, string, typeof MousePointer2]> = [
     ["residue-region", "Clic", MousePointer2],
@@ -155,7 +150,7 @@ export function ResidueCleanup({ protectedRegionIds, onUnprotectCurrent }: { pro
       <div><span className="red-dot" /><span>Píxeles que pasarán a alfa 0</span><b>{number.format(summary.selectedPixels)}</b></div>
       <div><span className="red-dot" /><span>Regiones seleccionadas</span><b>{number.format(summary.selectedRegions)}</b></div>
     </div>
-    <button className="hold-compare" disabled={!summary.hasSelection} onPointerDown={() => void compare(true)} onPointerUp={() => void compare(false)} onPointerLeave={() => void compare(false)}><Eye size={13} /> Mantener presionado para ver Antes</button>
+    <button className="hold-compare" disabled={!summary.hasSelection} onPointerDown={() => compare(true)} onPointerUp={() => compare(false)} onPointerLeave={() => compare(false)}><Eye size={13} /> Mantener presionado para ver Antes</button>
     <button className="danger-action" disabled={!summary.hasSelection || busy} onClick={() => void apply()}><Eraser size={14} /> FORZAR TRANSPARENTE</button>
     <small className="microcopy">También puedes hacer clic derecho sobre el lienzo o presionar Supr. Sólo la selección pasa a alfa 0; el resto queda intacto.</small>
   </section>;

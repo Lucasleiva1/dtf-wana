@@ -46,7 +46,7 @@ pub async fn get_document_preview(
         let document = document
             .lock()
             .map_err(|_| "No se pudo bloquear el documento".to_string())?;
-        document.preview_png(&mode)
+        Ok::<Vec<u8>, String>(document.preview_rgba8(&mode))
     })
     .await
     .map_err(|error| format!("Falló la vista previa: {error}"))??;

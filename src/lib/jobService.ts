@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AlphaAnalysis, AlphaTreatment, ExportVerification, JobSnapshot, TreatmentImpact, TreatmentResult } from "../types/alpha";
 import type { StudioDocument } from "../types/document";
 import type { MaskSummary, ResidueApplyResult, ResidueCleanupOptions } from "../types/residue";
+import { rgbaBytesToBitmap } from "./bitmapService";
 
 type StartedJob = { jobId: string };
 
@@ -38,7 +39,7 @@ export async function runPreviewJob(
   document: StudioDocument,
   treatment: AlphaTreatment,
   onProgress: (job: JobSnapshot<TreatmentImpact>) => void,
-): Promise<{ impact: TreatmentImpact; blob: Blob }> {
+): Promise<{ impact: TreatmentImpact; bitmap: ImageBitmap }> {
   const job = await watchJob<TreatmentImpact>(
     invoke<StartedJob>("start_alpha_preview_job", {
       documentId: document.id,
@@ -49,7 +50,7 @@ export async function runPreviewJob(
   );
   if (!job.result) throw new Error("La previsualización terminó sin estadísticas.");
   const bytes = await invoke<ArrayBuffer>("get_job_binary", { jobId: job.id });
-  return { impact: job.result, blob: new Blob([bytes], { type: "image/png" }) };
+  return { impact: job.result, bitmap: await rgbaBytesToBitmap(bytes, document.width, document.height) };
 }
 
 export async function runTreatmentJob(
@@ -73,7 +74,7 @@ export async function runResidueCleanupJob(
   document: StudioDocument,
   options: ResidueCleanupOptions,
   onProgress: (job: JobSnapshot<MaskSummary>) => void,
-): Promise<{ summary: MaskSummary; blob: Blob }> {
+): Promise<{ summary: MaskSummary; mask: Uint8Array }> {
   const job = await watchJob<MaskSummary>(
     invoke<StartedJob>("start_residue_cleanup_job", {
       documentId: document.id,
@@ -84,7 +85,7 @@ export async function runResidueCleanupJob(
   );
   if (!job.result) throw new Error("La detección de residuos terminó sin resultado.");
   const bytes = await invoke<ArrayBuffer>("get_job_binary", { jobId: job.id });
-  return { summary: job.result, blob: new Blob([bytes], { type: "image/png" }) };
+  return { summary: job.result, mask: new Uint8Array(bytes) };
 }
 
 export async function runApplyResidueJob(
