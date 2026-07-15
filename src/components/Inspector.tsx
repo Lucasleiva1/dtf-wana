@@ -37,6 +37,7 @@ function TransparencyInspector() {
   const setRegionIndex = useStudioStore((state) => state.setRegionIndex);
   const focusRect = useStudioStore((state) => state.focusRect);
   const pushHistory = useStudioStore((state) => state.pushHistory);
+  const setNotification = useStudioStore((state) => state.setNotification);
   const [action, setAction] = useState<"threshold" | "make_transparent" | "make_opaque">("threshold");
   const [thresholdPercent, setThresholdPercent] = useState(50);
   const [radius, setRadius] = useState(8);
@@ -56,7 +57,6 @@ function TransparencyInspector() {
       const result = await analyzeDocument(document);
       setAnalysis(result);
       setStatus("complete");
-      await changePreview("partial_overlay", result.partialAlphaPixels > 0);
     } catch (reason) {
       setStatus("error", messageOf(reason));
     }
@@ -90,13 +90,18 @@ function TransparencyInspector() {
     setStatus("applying");
     try {
       const result = await applyTreatment(document, pending.treatment);
-      const blob = await getDocumentPreview(document.id, "result");
+      const blob = previewMode === "original" ? document.sourceFile : await getDocumentPreview(document.id, previewMode);
       updateDocument({ revision: result.revision, dirty: true, renderBlob: blob, renderRevision: document.renderRevision + 1 });
       setAnalysis(result.analysis);
-      setPreviewMode("result");
       pushHistory(labelFor(pending.treatment));
       setPending(null);
       setStatus("complete");
+      setNotification({
+        kind: result.analysis.verifiedSolidAlpha ? "success" : "error",
+        text: result.analysis.verifiedSolidAlpha
+          ? "Tratamiento terminado: cero píxeles semitransparentes."
+          : `El tratamiento terminó, pero quedan ${number.format(result.analysis.partialAlphaPixels)} píxeles parciales.`,
+      });
     } catch (reason) {
       setStatus("error", messageOf(reason));
     }
@@ -178,7 +183,7 @@ function TransparencyInspector() {
                 <span>{number.format(pending.impact.willBecomeTransparent)} → transparentes</span>
                 <span>{number.format(pending.impact.willBecomeOpaque)} → opacos</span>
                 <small>La operación se registra y puede deshacerse.</small>
-                <div><button onClick={() => setPending(null)}>Cancelar</button><button className="confirm" onClick={confirmTreatment}>Aplicar</button></div>
+                <div><button disabled={status === "applying"} onClick={() => setPending(null)}>Cancelar</button><button disabled={status === "applying"} className="confirm" onClick={confirmTreatment}>{status === "applying" ? <><LoaderCircle className="spin" size={13} /> Procesando…</> : "Aplicar"}</button></div>
               </div>
             )}
           </section>

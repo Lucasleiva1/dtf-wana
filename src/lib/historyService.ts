@@ -33,8 +33,10 @@ export async function changePixelHistory(direction: "undo" | "redo"): Promise<vo
     }
     if (!response.data.changed) return;
 
-    const preview = await getDocumentPreview(document.id, "result");
     const latest = useStudioStore.getState();
+    const preview = latest.previewMode === "original"
+      ? document.sourceFile
+      : await getDocumentPreview(document.id, latest.previewMode);
     latest.updateDocument({
       revision: response.data.revision,
       dirty: response.data.revision > 0,
@@ -42,7 +44,6 @@ export async function changePixelHistory(direction: "undo" | "redo"): Promise<vo
       renderRevision: document.renderRevision + 1,
     });
     latest.setAlphaAnalysis(response.data.analysis);
-    latest.setPreviewMode("result");
     if (direction === "undo") latest.undo();
     else latest.redo();
     latest.setAlphaStatus("complete");

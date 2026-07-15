@@ -81,7 +81,7 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
     };
     void load().catch((reason) => setImageError(reason instanceof Error ? reason.message : "No se pudo mostrar la imagen."));
     return () => { cancelled = true; };
-  }, [document, previewBackground]);
+  }, [document]);
 
   useEffect(() => {
     const host = hostRef.current;
