@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Application, Assets, Container, Graphics, Sprite, Texture } from "pixi.js";
+import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import { ImagePlus, MousePointer2 } from "lucide-react";
 import { useStudioStore } from "../stores/studioStore";
 
@@ -15,6 +15,7 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const pixiRef = useRef<{ app: Application; world: Container; artboard: Graphics; sprite?: Sprite } | null>(null);
   const [rendererError, setRendererError] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const document = useStudioStore((state) => state.document);
   const camera = useStudioStore((state) => state.camera);
   const previewBackground = useStudioStore((state) => state.previewBackground);
@@ -27,11 +28,13 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
     const host = hostRef.current;
     if (!host) return;
     let disposed = false;
+    let initialized = false;
     const app = new Application();
     const world = new Container();
     const artboard = new Graphics();
     void app.init({ resizeTo: host, antialias: true, backgroundAlpha: 0, resolution: Math.min(devicePixelRatio, 2), autoDensity: true })
       .then(() => {
+        initialized = true;
         if (disposed) return app.destroy(true);
         host.appendChild(app.canvas);
         app.stage.addChild(world);
@@ -47,7 +50,7 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
       disposed = true;
       observer.disconnect();
       pixiRef.current = null;
-      app.destroy(true, { children: true });
+      if (initialized) app.destroy(true, { children: true });
     };
   }, [setViewport]);
 
@@ -61,10 +64,12 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
   useEffect(() => {
     const pixi = pixiRef.current;
     if (!pixi) return;
+    let cancelled = false;
     const load = async () => {
+      setImageError(null);
       if (pixi.sprite) {
         pixi.world.removeChild(pixi.sprite);
-        pixi.sprite.destroy();
+        pixi.sprite.destroy({ texture: true, textureSource: true });
         pixi.sprite = undefined;
       }
       pixi.artboard.clear();
@@ -81,17 +86,22 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
           }
         }
       }
-      pixi.artboard.rect(0, 0, document.width, document.height).stroke({ color: 0x8f8a83, width: 1 / Math.max(camera.zoom, 0.02) });
-      const texture = await Assets.load<Texture>(document.previewUrl);
-      if (!pixiRef.current || pixiRef.current !== pixi) return;
+      pixi.artboard.rect(0, 0, document.width, document.height).stroke({ color: 0x8f8a83, width: 1 });
+      const bitmap = await createImageBitmap(document.sourceFile);
+      if (cancelled || !pixiRef.current || pixiRef.current !== pixi) {
+        bitmap.close();
+        return;
+      }
+      const texture = Texture.from(bitmap);
       const sprite = new Sprite(texture);
       sprite.width = document.width;
       sprite.height = document.height;
       pixi.world.addChild(sprite);
       pixi.sprite = sprite;
     };
-    void load();
-  }, [document, previewBackground, camera.zoom]);
+    void load().catch((reason) => setImageError(reason instanceof Error ? reason.message : "No se pudo mostrar la imagen."));
+    return () => { cancelled = true; };
+  }, [document, previewBackground]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -142,6 +152,7 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
       )}
       {document && <div className="canvas-hint"><MousePointer2 size={13} /> Rueda: zoom · Mano: desplazar</div>}
       {rendererError && <div className="renderer-error">WebGL no está disponible. Se habilitará el fallback 2D.</div>}
+      {imageError && <div className="renderer-error">No se pudo crear la vista previa: {imageError}</div>}
     </div>
   );
 }
