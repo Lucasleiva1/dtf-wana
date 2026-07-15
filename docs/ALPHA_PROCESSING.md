@@ -8,6 +8,16 @@
 
 El análisis retorna dimensiones, profundidad, conteos exactos, alfa parcial mínimo/máximo, porcentaje, histograma y bounding boxes de componentes conectados.
 
+## Recomendación determinística
+
+El asistente no usa IA generativa. Combina el valle del histograma, componentes conectados, proximidad a opacos, detalle fino, partículas y riesgo de borde. Devuelve umbral recomendado, rango seguro, presets conservador/equilibrado/agresivo, impacto estimado y nivel de riesgo. Nunca aplica una recomendación sin confirmación.
+
+Las protecciones cambian la decisión binaria del píxel: un detalle protegido se resuelve como opaco; no se conserva un alfa intermedio oculto.
+
+## Trabajos y cancelación
+
+Análisis, previsualización, tratamiento y exportación se ejecutan como Jobs fuera del hilo de interfaz. Cada Job informa etapa, porcentaje, unidades reales, tiempo y memoria estimada. La cancelación se consulta durante recorridos por filas o píxeles. El tratamiento trabaja sobre una copia transaccional y sólo reemplaza el documento después de verificar el resultado.
+
 ## Tratamientos
 
 Todas las operaciones producen una máscara/delta reversible:
@@ -34,4 +44,3 @@ La verificación técnica confirma alfa. La visual informa halos, regiones pendi
 ## Verificación posterior a exportación
 
 El archivo guardado se reabre con un decoder independiente del canvas. Se comprueban firma/formato, dimensiones, profundidad y conjunto de valores alfa. En modo sólido, cualquier valor intermedio invalida la exportación.
-

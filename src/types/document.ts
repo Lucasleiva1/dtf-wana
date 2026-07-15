@@ -1,5 +1,5 @@
 export type ModuleId = "background" | "transparency" | "separation";
-export type PreviewBackground = "checker-small" | "checker-large" | "white" | "black" | "gray";
+export type PreviewBackground = "checker-small" | "checker-large" | "white" | "black" | "gray" | "custom";
 export type ToolId = "select" | "transform" | "hand" | "zoom" | "brush" | "eraser" | "analyze";
 
 export type StudioDocument = {

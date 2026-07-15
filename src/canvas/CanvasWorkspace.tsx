@@ -11,10 +11,18 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
   const document = useStudioStore((state) => state.document);
   const camera = useStudioStore((state) => state.camera);
   const previewBackground = useStudioStore((state) => state.previewBackground);
+  const customBackgroundColor = useStudioStore((state) => state.customBackgroundColor);
   const activeTool = useStudioStore((state) => state.activeTool);
+  const activeJob = useStudioStore((state) => state.activeJob);
   const setViewport = useStudioStore((state) => state.setViewport);
   const panBy = useStudioStore((state) => state.panBy);
   const setZoomAt = useStudioStore((state) => state.setZoomAt);
+  const scanning = activeJob?.operation === "alpha_analysis" && (activeJob.status === "queued" || activeJob.status === "running");
+  const scanRatio = !activeJob || activeJob.stageIndex < 2
+    ? 0
+    : activeJob.stageIndex > 2
+      ? 1
+      : activeJob.processedUnits / Math.max(1, activeJob.totalUnits);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -122,7 +130,7 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
   }, [activeTool, panBy, setZoomAt]);
 
   return (
-    <div ref={hostRef} className={`canvas-workspace tool-${activeTool} background-${previewBackground}`} aria-label="Lienzo de trabajo">
+    <div ref={hostRef} className={`canvas-workspace tool-${activeTool} background-${previewBackground}`} style={previewBackground === "custom" ? { background: customBackgroundColor } : undefined} aria-label="Lienzo de trabajo">
       {!document && (
         <button className="empty-canvas" onClick={onOpen}>
           <ImagePlus size={34} strokeWidth={1.3} />
@@ -131,6 +139,13 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
         </button>
       )}
       {document && <div className="canvas-hint"><MousePointer2 size={13} /> Rueda: zoom · Mano: desplazar</div>}
+      {document && scanning && <div className={`scanner-overlay ${activeJob.stageIndex >= 3 ? "grouping" : ""}`} style={{
+        left: camera.x,
+        top: camera.y,
+        width: document.width * camera.zoom,
+        height: document.height * camera.zoom,
+        "--scan-progress": `${Math.max(0, Math.min(1, scanRatio)) * 100}%`,
+      } as React.CSSProperties}><div /><i /><span>{activeJob.stage}</span></div>}
       {rendererError && <div className="renderer-error">WebGL no está disponible. Se habilitará el fallback 2D.</div>}
       {imageError && <div className="renderer-error">No se pudo crear la vista previa: {imageError}</div>}
     </div>

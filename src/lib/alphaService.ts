@@ -3,6 +3,8 @@ import { save } from "@tauri-apps/plugin-dialog";
 import type { AlphaAnalysis, AlphaTreatment, ExportVerification, PreviewMode, TreatmentImpact, TreatmentResult } from "../types/alpha";
 import type { StudioDocument } from "../types/document";
 import { dispatchCommand } from "./commandBus";
+import { runExportJob } from "./jobService";
+import type { JobSnapshot } from "../types/alpha";
 
 export type ImportedEngineDocument = {
   documentId: string;
@@ -51,7 +53,7 @@ export async function getDocumentPreview(documentId: string, mode: PreviewMode):
   return new Blob([bytes], { type: "image/png" });
 }
 
-export async function exportVerifiedDocument(document: StudioDocument): Promise<ExportVerification | null> {
+export async function exportVerifiedDocument(document: StudioDocument, onProgress?: (job: JobSnapshot<ExportVerification>) => void): Promise<ExportVerification | null> {
   if (!window.__TAURI_INTERNALS__) throw new Error("La exportación verificada requiere la aplicación de escritorio.");
   const baseName = document.name.replace(/\.[^.]+$/, "");
   let path = await save({
@@ -61,12 +63,5 @@ export async function exportVerifiedDocument(document: StudioDocument): Promise<
   });
   if (!path) return null;
   if (!path.toLowerCase().endsWith(".png")) path += ".png";
-  const result = await dispatchCommand("export.document", {
-    documentId: document.id,
-    path,
-    requireSolidAlpha: true,
-    dpi: 300,
-  }, { expectedRevision: document.revision });
-  if (!result.ok || !result.data) throw new Error(result.error?.message ?? "La exportación no pudo verificarse.");
-  return result.data as ExportVerification;
+  return runExportJob(document, path, onProgress ?? (() => {}));
 }

@@ -3,11 +3,13 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
+use super::jobs::JobManager;
 use crate::image_engine::document::ImageDocument;
 
 #[derive(Clone, Default)]
 pub struct AppState {
     documents: Arc<RwLock<HashMap<String, Arc<Mutex<ImageDocument>>>>>,
+    pub jobs: JobManager,
 }
 
 impl AppState {

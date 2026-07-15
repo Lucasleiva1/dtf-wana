@@ -44,6 +44,8 @@ export async function changePixelHistory(direction: "undo" | "redo"): Promise<vo
       renderRevision: document.renderRevision + 1,
     });
     latest.setAlphaAnalysis(response.data.analysis);
+    latest.setVisualReviewComplete(false);
+    latest.setTransparencyFlow(response.data.analysis.verifiedSolidAlpha ? "technical_result" : "recommendation_available");
     if (direction === "undo") latest.undo();
     else latest.redo();
     latest.setAlphaStatus("complete");

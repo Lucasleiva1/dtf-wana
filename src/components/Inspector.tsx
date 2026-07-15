@@ -1,12 +1,26 @@
-import { useMemo, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, CircleCheck, Eye, Layers3, LoaderCircle, ScanSearch } from "lucide-react";
-import { analyzeDocument, applyTreatment, estimateTreatment, getDocumentPreview } from "../lib/alphaService";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle, ChevronLeft, ChevronRight, CircleCheck, Clock3, Eye, Layers3,
+  LoaderCircle, MemoryStick, Pause, ScanSearch, ShieldCheck, Sparkles, X,
+} from "lucide-react";
+import { getDocumentPreview } from "../lib/alphaService";
+import { cancelJob, runAnalysisJob, runPreviewJob, runTreatmentJob } from "../lib/jobService";
 import { useStudioStore } from "../stores/studioStore";
-import type { AlphaTreatment, PreviewMode, TreatmentImpact } from "../types/alpha";
+import type {
+  AlphaTreatment, JobSnapshot, PreviewMode, ProtectionOptions, ReconstructionMode,
+  RiskLevel, TreatmentImpact,
+} from "../types/alpha";
 import type { ModuleId } from "../types/document";
 
 const tabs: Array<[ModuleId, string]> = [["background", "Quitar fondo"], ["transparency", "Transparencias"], ["separation", "Separar"]];
 const number = new Intl.NumberFormat("es-AR");
+const defaultProtections: ProtectionOptions = {
+  protectConnectedTexture: true,
+  protectFineLines: true,
+  protectGrunge: true,
+  onlyIsolatedParticles: false,
+  preservedRegionIds: [],
+};
 
 export function Inspector() {
   const activeModule = useStudioStore((state) => state.activeModule);
@@ -26,10 +40,11 @@ export function Inspector() {
 function TransparencyInspector() {
   const document = useStudioStore((state) => state.document);
   const analysis = useStudioStore((state) => state.alphaAnalysis);
-  const status = useStudioStore((state) => state.alphaStatus);
   const error = useStudioStore((state) => state.alphaError);
   const regionIndex = useStudioStore((state) => state.alphaRegionIndex);
   const previewMode = useStudioStore((state) => state.previewMode);
+  const activeJob = useStudioStore((state) => state.activeJob);
+  const flow = useStudioStore((state) => state.transparencyFlow);
   const setAnalysis = useStudioStore((state) => state.setAlphaAnalysis);
   const setStatus = useStudioStore((state) => state.setAlphaStatus);
   const updateDocument = useStudioStore((state) => state.updateDocument);
@@ -38,34 +53,120 @@ function TransparencyInspector() {
   const focusRect = useStudioStore((state) => state.focusRect);
   const pushHistory = useStudioStore((state) => state.pushHistory);
   const setNotification = useStudioStore((state) => state.setNotification);
-  const [action, setAction] = useState<"threshold" | "make_transparent" | "make_opaque">("threshold");
-  const [thresholdPercent, setThresholdPercent] = useState(50);
-  const [radius, setRadius] = useState(8);
-  const [pending, setPending] = useState<{ impact: TreatmentImpact; treatment: AlphaTreatment } | null>(null);
+  const setActiveJob = useStudioStore((state) => state.setActiveJob);
+  const setFlow = useStudioStore((state) => state.setTransparencyFlow);
+  const setVisualReviewComplete = useStudioStore((state) => state.setVisualReviewComplete);
 
-  const treatment = useMemo<AlphaTreatment>(() => {
-    if (action === "make_transparent") return { action };
-    if (action === "make_opaque") return { action, reconstructRadius: radius };
-    const maxAlpha = analysis?.maxAlpha ?? (document?.bitDepth === 16 ? 65535 : 255);
-    return { action, threshold: Math.round(maxAlpha * thresholdPercent / 100), reconstructRadius: radius };
-  }, [action, analysis?.maxAlpha, document?.bitDepth, radius, thresholdPercent]);
+  const [threshold, setThreshold] = useState(128);
+  const [radius, setRadius] = useState(2);
+  const [reconstructionMode, setReconstructionMode] = useState<ReconstructionMode>("automatic");
+  const [protections, setProtections] = useState(defaultProtections);
+  const [impact, setImpact] = useState<TreatmentImpact | null>(null);
+  const [impactBlob, setImpactBlob] = useState<Blob | null>(null);
+  const [previewDirty, setPreviewDirty] = useState(false);
+  const [visualReviewed, setVisualReviewed] = useState(false);
+  const previewSequence = useRef(0);
+
+  const recommendation = analysis?.recommendation ?? null;
+  const treatment = useMemo<AlphaTreatment>(() => ({
+    action: "threshold",
+    threshold,
+    reconstructRadius: radius,
+    reconstructionMode,
+    protections,
+  }), [protections, radius, reconstructionMode, threshold]);
+
+  useEffect(() => {
+    if (!previewDirty || !analysis?.partialAlphaPixels || !document) return;
+    const timer = window.setTimeout(() => void previewImpact(), 280);
+    return () => window.clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threshold, radius, reconstructionMode, protections, previewDirty]);
 
   const analyze = async () => {
     if (!document) return;
     setStatus("analyzing");
+    setFlow("analyzing");
+    setImpact(null);
+    setImpactBlob(null);
     try {
-      const result = await analyzeDocument(document);
+      const result = await runAnalysisJob(document, (job) => setActiveJob(job));
       setAnalysis(result);
       setStatus("complete");
+      setFlow(result.partialAlphaPixels ? "recommendation_available" : "technical_result");
+      if (result.recommendation) {
+        setThreshold(result.recommendation.recommendedThreshold);
+        setRadius(result.recommendation.recommendedRadius);
+      }
+    } catch (reason) {
+      setStatus("error", messageOf(reason));
+      setFlow("unprocessed");
+    }
+  };
+
+  const previewImpact = async () => {
+    if (!document || !analysis?.partialAlphaPixels) return;
+    const sequence = ++previewSequence.current;
+    const runningJob = useStudioStore.getState().activeJob;
+    if (runningJob?.operation === "alpha_preview" && (runningJob.status === "queued" || runningJob.status === "running")) {
+      await cancelJob(runningJob.id);
+    }
+    setPreviewDirty(false);
+    setStatus("applying");
+    setFlow("previewing");
+    try {
+      const result = await runPreviewJob(document, treatment, (job) => setActiveJob(job));
+      if (sequence !== previewSequence.current) return;
+      setImpact(result.impact);
+      setImpactBlob(result.blob);
+      updateDocument({ renderBlob: result.blob, renderRevision: document.renderRevision + 1 });
+      setPreviewMode("impact_overlay");
+      setStatus("complete");
+      setFlow("preview_ready");
+    } catch (reason) {
+      if (sequence !== previewSequence.current) return;
+      setStatus("error", messageOf(reason));
+    }
+  };
+
+  const confirmTreatment = async () => {
+    if (!document || !impact) return;
+    setStatus("applying");
+    setFlow("applying");
+    try {
+      const result = await runTreatmentJob(document, treatment, (job) => {
+        setActiveJob(job);
+        if (job.stageIndex >= 5) setFlow("verifying");
+      });
+      const blob = await getDocumentPreview(document.id, "result");
+      updateDocument({ revision: result.revision, dirty: true, renderBlob: blob, renderRevision: document.renderRevision + 1 });
+      setAnalysis(result.analysis);
+      setVisualReviewComplete(false);
+      setPreviewMode("result");
+      pushHistory("Eliminar semitransparencias con protección de detalle");
+      setImpact(null);
+      setImpactBlob(null);
+      setStatus("complete");
+      setFlow(result.analysis.verifiedSolidAlpha ? "technical_result" : "recommendation_available");
+      setNotification({
+        kind: result.analysis.verifiedSolidAlpha ? "success" : "error",
+        text: result.analysis.verifiedSolidAlpha
+          ? "Verificación técnica finalizada: cero semitransparencias."
+          : `Quedan ${number.format(result.analysis.partialAlphaPixels)} píxeles parciales. Revisá el modo de partículas aisladas.`,
+      });
     } catch (reason) {
       setStatus("error", messageOf(reason));
     }
   };
 
-  const changePreview = async (mode: PreviewMode, force = true) => {
-    if (!document || (!force && mode === previewMode)) return;
+  const changePreview = async (mode: PreviewMode) => {
+    if (!document) return;
     try {
-      const blob = mode === "original" ? document.sourceFile : await getDocumentPreview(document.id, mode);
+      const blob = mode === "original"
+        ? document.sourceFile
+        : mode === "impact_overlay" && impactBlob
+          ? impactBlob
+          : await getDocumentPreview(document.id, mode === "impact_overlay" ? "result" : mode);
       updateDocument({ renderBlob: blob, renderRevision: document.renderRevision + 1 });
       setPreviewMode(mode);
     } catch (reason) {
@@ -73,38 +174,9 @@ function TransparencyInspector() {
     }
   };
 
-  const simulate = async () => {
-    if (!document || !analysis) return;
-    setStatus("applying");
-    try {
-      const impact = await estimateTreatment(document, treatment);
-      setPending({ impact, treatment });
-      setStatus("complete");
-    } catch (reason) {
-      setStatus("error", messageOf(reason));
-    }
-  };
-
-  const confirmTreatment = async () => {
-    if (!document || !pending) return;
-    setStatus("applying");
-    try {
-      const result = await applyTreatment(document, pending.treatment);
-      const blob = previewMode === "original" ? document.sourceFile : await getDocumentPreview(document.id, previewMode);
-      updateDocument({ revision: result.revision, dirty: true, renderBlob: blob, renderRevision: document.renderRevision + 1 });
-      setAnalysis(result.analysis);
-      pushHistory(labelFor(pending.treatment));
-      setPending(null);
-      setStatus("complete");
-      setNotification({
-        kind: result.analysis.verifiedSolidAlpha ? "success" : "error",
-        text: result.analysis.verifiedSolidAlpha
-          ? "Tratamiento terminado: cero píxeles semitransparentes."
-          : `El tratamiento terminó, pero quedan ${number.format(result.analysis.partialAlphaPixels)} píxeles parciales.`,
-      });
-    } catch (reason) {
-      setStatus("error", messageOf(reason));
-    }
+  const compare = (showOriginal: boolean) => {
+    if (!document || !impactBlob) return;
+    updateDocument({ renderBlob: showOriginal ? document.sourceFile : impactBlob, renderRevision: document.renderRevision + 1 });
   };
 
   const navigate = (direction: -1 | 1) => {
@@ -114,91 +186,192 @@ function TransparencyInspector() {
     focusRect(analysis.regions[next]);
   };
 
+  const usePreset = (value: number) => {
+    setThreshold(value);
+    setPreviewDirty(true);
+    setImpact(null);
+  };
+
+  const setProtection = (key: keyof Omit<ProtectionOptions, "preservedRegionIds">, value: boolean) => {
+    setProtections((current) => ({ ...current, [key]: value }));
+    setPreviewDirty(true);
+    setImpact(null);
+  };
+
+  const preserveCurrentRegion = () => {
+    const region = analysis?.regions[regionIndex];
+    if (!region) return;
+    setProtections((current) => ({
+      ...current,
+      preservedRegionIds: current.preservedRegionIds.includes(region.id)
+        ? current.preservedRegionIds.filter((id) => id !== region.id)
+        : [...current.preservedRegionIds, region.id],
+    }));
+    setPreviewDirty(true);
+    setImpact(null);
+  };
+
+  const recommendationPosition = recommendation ? recommendation.recommendedThreshold / analysis!.maxAlpha * 100 : 50;
+  const safeStart = recommendation ? recommendation.safeMin / analysis!.maxAlpha * 100 : 40;
+  const safeEnd = recommendation ? recommendation.safeMax / analysis!.maxAlpha * 100 : 60;
+  const busy = activeJob?.status === "queued" || activeJob?.status === "running";
+
   return (
     <div className="inspector-content transparency-inspector">
+      <FlowStatus flow={flow} />
+
       <section>
-        <div className="section-title"><span>ANÁLISIS DE ALFA</span><ScanSearch size={14} /></div>
-        {document ? (
-          <dl className="metrics">
-            <div><dt>Formato</dt><dd>{document.format} RGBA</dd></div>
-            <div><dt>Dimensiones</dt><dd>{number.format(document.width)} × {number.format(document.height)}</dd></div>
-            <div><dt>Profundidad</dt><dd>{analysis?.bitDepth ?? document.bitDepth} bits</dd></div>
-            <div><dt>Transparentes</dt><dd>{analysis ? number.format(analysis.transparentPixels) : "—"}</dd></div>
-            <div><dt>Semitransparentes</dt><dd className={analysis?.partialAlphaPixels ? "alpha-text" : "success-text"}>{analysis ? number.format(analysis.partialAlphaPixels) : "Sin analizar"}</dd></div>
-            <div><dt>Opacos</dt><dd>{analysis ? number.format(analysis.opaquePixels) : "—"}</dd></div>
-            <div><dt>Alfa parcial</dt><dd>{analysis?.partialAlphaMin ?? "—"} – {analysis?.partialAlphaMax ?? "—"}</dd></div>
-            <div><dt>Porcentaje</dt><dd>{analysis ? `${analysis.partialAlphaPercent.toFixed(4)} %` : "—"}</dd></div>
-            <div><dt>Regiones</dt><dd>{analysis ? number.format(analysis.affectedRegions) : "—"}</dd></div>
-          </dl>
-        ) : <p className="muted">Abrí una imagen para iniciar el análisis exacto.</p>}
-        <button className="primary-action" disabled={!document || status === "analyzing" || status === "applying"} onClick={analyze}>
-          {status === "analyzing" ? <><LoaderCircle className="spin" size={14} /> ANALIZANDO BUFFER ORIGINAL…</> : "ANALIZAR ALFA"}
+        <div className="section-title"><span>ANÁLISIS DE TRANSPARENCIA</span><ScanSearch size={14} /></div>
+        {document ? <dl className="metrics compact">
+          <div><dt>Imagen</dt><dd>{number.format(document.width)} × {number.format(document.height)}</dd></div>
+          <div><dt>Semitransparentes</dt><dd className={analysis?.partialAlphaPixels ? "alpha-text" : "success-text"}>{analysis ? number.format(analysis.partialAlphaPixels) : "Sin analizar"}</dd></div>
+          <div><dt>Zonas</dt><dd>{analysis ? number.format(analysis.affectedRegions) : "—"}</dd></div>
+          <div><dt>Profundidad</dt><dd>{analysis?.bitDepth ?? document.bitDepth} bits</dd></div>
+        </dl> : <p className="muted">Abrí una imagen para comenzar.</p>}
+        <button className="primary-action" disabled={!document || busy} onClick={analyze}>
+          {flow === "analyzing" ? <><LoaderCircle className="spin" size={14} /> ANALIZANDO…</> : "ANALIZAR ALFA"}
         </button>
         {error && <p className="inline-error">{error}</p>}
       </section>
 
-      {analysis && (
-        <>
-          <section>
-            <div className="section-title"><span>HISTOGRAMA {analysis.bitDepth} BITS</span><ChevronRight size={14} /></div>
-            <Histogram bins={analysis.histogram} />
-            <div className="histogram-range"><span>0 transparente</span><span>{analysis.maxAlpha} opaco</span></div>
-          </section>
+      {analysis && <section>
+        <div className="section-title"><span>HISTOGRAMA ALFA · {analysis.bitDepth} BITS</span><ChevronRight size={14} /></div>
+        <Histogram bins={analysis.histogram} />
+        <div className="histogram-range"><span>Transparente</span><span>Opaco</span></div>
+      </section>}
 
-          <section>
-            <div className="section-title"><span>VISTA DE REVISIÓN</span><Eye size={14} /></div>
-            <div className="segmented preview-modes">
-              {([['original', 'Original'], ['result', 'Resultado'], ['partial_overlay', 'Magenta'], ['alpha', 'Canal alfa']] as Array<[PreviewMode, string]>).map(([mode, label]) => (
-                <button key={mode} className={previewMode === mode ? "active" : ""} onClick={() => changePreview(mode)}>{label}</button>
-              ))}
-            </div>
-            <div className="region-nav">
-              <button disabled={!analysis.regions.length} onClick={() => navigate(-1)} title="Zona anterior"><ChevronLeft size={15} /></button>
-              <span>{analysis.regions.length ? `Zona ${regionIndex + 1} de ${analysis.regions.length}` : "Sin zonas problemáticas"}</span>
-              <button disabled={!analysis.regions.length} onClick={() => navigate(1)} title="Zona siguiente"><ChevronRight size={15} /></button>
-            </div>
-          </section>
+      {analysis?.verifiedSolidAlpha && <ZeroAlphaState visualReviewed={visualReviewed} onReviewed={(checked) => {
+        setVisualReviewed(checked);
+        setVisualReviewComplete(checked);
+        setFlow(checked ? "ready_to_export" : "visual_review");
+      }} onView={(mode) => void changePreview(mode)} />}
 
-          <section>
-            <div className="section-title"><span>TRATAMIENTO</span><ChevronRight size={14} /></div>
-            <label className="field-label">Método
-              <select value={action} onChange={(event) => { setAction(event.target.value as typeof action); setPending(null); }}>
-                <option value="threshold">Umbral binario</option>
-                <option value="make_transparent">Todo parcial → transparente</option>
-                <option value="make_opaque">Todo parcial → opaco</option>
-              </select>
-            </label>
-            {action === "threshold" && <label className="field-label">Umbral: {Math.round((analysis.maxAlpha * thresholdPercent) / 100)}
-              <input type="range" min="1" max="99" value={thresholdPercent} onChange={(event) => { setThresholdPercent(Number(event.target.value)); setPending(null); }} />
-            </label>}
-            {action !== "make_transparent" && <label className="field-label">Reconstrucción de borde: {radius} px
-              <input type="range" min="1" max="32" value={radius} onChange={(event) => { setRadius(Number(event.target.value)); setPending(null); }} />
-            </label>}
-            {!pending ? (
-              <button className="danger-action" disabled={!analysis.partialAlphaPixels || status === "applying"} onClick={simulate}>ELIMINAR TODAS LAS SEMITRANSPARENCIAS</button>
-            ) : (
-              <div className="treatment-confirmation">
-                <b>Resumen antes de aplicar</b>
-                <span>{number.format(pending.impact.willModifyPixels)} píxeles cambiarán</span>
-                <span>{number.format(pending.impact.willBecomeTransparent)} → transparentes</span>
-                <span>{number.format(pending.impact.willBecomeOpaque)} → opacos</span>
-                <small>La operación se registra y puede deshacerse.</small>
-                <div><button disabled={status === "applying"} onClick={() => setPending(null)}>Cancelar</button><button disabled={status === "applying"} className="confirm" onClick={confirmTreatment}>{status === "applying" ? <><LoaderCircle className="spin" size={13} /> Procesando…</> : "Aplicar"}</button></div>
-              </div>
-            )}
-          </section>
+      {analysis && !analysis.verifiedSolidAlpha && recommendation && <>
+        <section className="recommendation-card">
+          <div className="section-title"><span>RECOMENDACIÓN</span><Sparkles size={14} /></div>
+          <div className="recommendation-head"><strong>{recommendation.recommendedThreshold}</strong><RiskBadge risk={recommendation.risk} /></div>
+          <p>{recommendation.explanation}</p>
+          <dl className="impact-grid">
+            <div><dt>Rango seguro</dt><dd>{recommendation.safeMin}–{recommendation.safeMax}</dd></div>
+            <div><dt>Borde afectado</dt><dd>{recommendation.edgeAffectedPercent.toFixed(1)} %</dd></div>
+            <div><dt>Detalle fino</dt><dd>{number.format(recommendation.fineDetailPixels)} px</dd></div>
+            <div><dt>Radio automático</dt><dd>{recommendation.recommendedRadius} px</dd></div>
+            <div className="red"><dt>Serán transparentes</dt><dd>{number.format(recommendation.estimatedTransparent)}</dd></div>
+            <div className="cyan"><dt>Serán opacos</dt><dd>{number.format(recommendation.estimatedOpaque)}</dd></div>
+          </dl>
+          <div className="preset-buttons">
+            {[recommendation.conservative, recommendation.balanced, recommendation.aggressive].map((preset) => (
+              <button key={preset.name} className={threshold === preset.threshold ? "active" : ""} title={preset.description} onClick={() => usePreset(preset.threshold)}>{preset.name}<b>{preset.threshold}</b></button>
+            ))}
+          </div>
+        </section>
 
-          <section className="quality-gates">
-            <div className={analysis.verifiedSolidAlpha ? "verified" : "pending"}>
-              {analysis.verifiedSolidAlpha ? <CircleCheck size={15} /> : <AlertTriangle size={15} />}
-              <span>Verificación técnica</span><b>{analysis.verifiedSolidAlpha ? "0 parciales" : `${number.format(analysis.partialAlphaPixels)} pendientes`}</b>
-            </div>
-            <div className="pending"><AlertTriangle size={15} /><span>Revisión visual de bordes</span><b>Pendiente</b></div>
-          </section>
-        </>
-      )}
+        <section>
+          <div className="section-title"><span>¿QUÉ SE CONSERVA?</span><ShieldCheck size={14} /></div>
+          <div className="threshold-explanation"><span>Se vuelve transparente</span><span>Se vuelve opaco</span></div>
+          <div className="threshold-control" style={{ "--recommendation": `${recommendationPosition}%`, "--safe-start": `${safeStart}%`, "--safe-end": `${safeEnd}%` } as React.CSSProperties}>
+            <div className="risk-track"><i /><b /></div>
+            <input aria-label="Umbral de transparencia" type="range" min="1" max={analysis.maxAlpha - 1} value={threshold} onChange={(event) => { setThreshold(Number(event.target.value)); setPreviewDirty(true); setImpact(null); }} />
+          </div>
+          <label className="numeric-threshold">Valor editable<input type="number" min="1" max={analysis.maxAlpha - 1} value={threshold} onChange={(event) => { setThreshold(Math.max(1, Math.min(analysis.maxAlpha - 1, Number(event.target.value)))); setPreviewDirty(true); setImpact(null); }} /></label>
+          <small className="microcopy">Menor valor conserva más detalle. Mayor valor elimina más borde tenue.</small>
+        </section>
+
+        <section>
+          <div className="section-title"><span>PROTECCIÓN DE DETALLES</span><ShieldCheck size={14} /></div>
+          <Check label="Proteger textura conectada" checked={protections.protectConnectedTexture} onChange={(value) => setProtection("protectConnectedTexture", value)} />
+          <Check label="Proteger líneas finas" checked={protections.protectFineLines} onChange={(value) => setProtection("protectFineLines", value)} />
+          <Check label="Proteger grunge" checked={protections.protectGrunge} onChange={(value) => setProtection("protectGrunge", value)} />
+          <Check label="Eliminar solamente partículas aisladas" checked={protections.onlyIsolatedParticles} onChange={(value) => setProtection("onlyIsolatedParticles", value)} />
+          <div className="region-nav">
+            <button onClick={() => navigate(-1)}><ChevronLeft size={15} /></button>
+            <span>Zona {regionIndex + 1} de {analysis.regions.length}</span>
+            <button onClick={() => navigate(1)}><ChevronRight size={15} /></button>
+          </div>
+          <button className="secondary-action" onClick={preserveCurrentRegion}>{protections.preservedRegionIds.includes(analysis.regions[regionIndex]?.id) ? "Dejar de conservar esta zona" : "Conservar esta zona manualmente"}</button>
+          {protections.preservedRegionIds.length > 0 && <small className="microcopy">{protections.preservedRegionIds.length} regiones marcadas para conservar.</small>}
+        </section>
+
+        <section>
+          <div className="section-title"><span>RECONSTRUCCIÓN DE BORDES</span><ChevronRight size={14} /></div>
+          <div className="segmented reconstruction-modes">
+            <button className={reconstructionMode === "automatic" ? "active" : ""} onClick={() => { setReconstructionMode("automatic"); setPreviewDirty(true); }}>Automático</button>
+            <button className={reconstructionMode === "manual" ? "active" : ""} onClick={() => { setReconstructionMode("manual"); setPreviewDirty(true); }}>Manual</button>
+          </div>
+          {reconstructionMode === "automatic" ? <p className="microcopy">Radio adaptativo estimado: <b>{recommendation.recommendedRadius} px</b>. Se limita para evitar halos.</p> : <label className="field-label">Radio manual: {radius} px<input type="range" min="1" max="16" value={radius} onChange={(event) => { setRadius(Number(event.target.value)); setPreviewDirty(true); setImpact(null); }} /></label>}
+          <p className="microcopy">Riesgo de contaminación: <RiskBadge risk={impact?.contaminationRisk ?? recommendation.contaminationRisk} /></p>
+        </section>
+
+        <section>
+          <div className="section-title"><span>PREVISUALIZACIÓN DE IMPACTO</span><Eye size={14} /></div>
+          <div className="impact-legend"><span className="red">Transparente</span><span className="cyan">Opaco</span><span className="magenta">Protegido/pendiente</span></div>
+          <div className="segmented preview-modes">
+            <button className={previewMode === "original" ? "active" : ""} onClick={() => void changePreview("original")}>Antes</button>
+            <button className={previewMode === "impact_overlay" ? "active" : ""} disabled={!impactBlob} onClick={() => void changePreview("impact_overlay")}>Impacto</button>
+            <button className={previewMode === "result" ? "active" : ""} onClick={() => void changePreview("result")}>Resultado</button>
+            <button className={previewMode === "alpha" ? "active" : ""} onClick={() => void changePreview("alpha")}>Canal alfa</button>
+          </div>
+          <button className="primary-action" disabled={busy} onClick={() => void previewImpact()}>PREVISUALIZAR RESULTADO</button>
+          <button className="hold-compare" disabled={!impactBlob} onPointerDown={() => compare(true)} onPointerUp={() => compare(false)} onPointerLeave={() => compare(false)}><Pause size={13} /> Mantener presionado para ver Antes</button>
+          {impact && <dl className="impact-summary">
+            <div className="red"><dt>Desaparecerán</dt><dd>{number.format(impact.willBecomeTransparent)}</dd></div>
+            <div className="cyan"><dt>Serán opacos</dt><dd>{number.format(impact.willBecomeOpaque)}</dd></div>
+            <div className="magenta"><dt>Protegidos</dt><dd>{number.format(impact.protectedPixels)}</dd></div>
+            <div><dt>Borde afectado</dt><dd>{impact.edgeAffectedPercent.toFixed(1)} %</dd></div>
+            <div><dt>Reconstruidos</dt><dd>{number.format(impact.reconstructedPixels)}</dd></div>
+            <div><dt>Pendientes</dt><dd>{number.format(impact.pendingPixels)}</dd></div>
+          </dl>}
+        </section>
+
+        <section>
+          <button className="danger-action" disabled={!impact || busy} onClick={() => void confirmTreatment()}>APLICAR Y VERIFICAR CERO SEMITRANSPARENCIAS</button>
+          <small className="microcopy">El documento no cambia hasta confirmar. La operación completa puede deshacerse.</small>
+        </section>
+      </>}
     </div>
   );
+}
+
+function FlowStatus({ flow }: { flow: string }) {
+  const labels: Record<string, string> = {
+    unprocessed: "Sin analizar", analyzing: "Analizando", analysis_complete: "Análisis terminado",
+    recommendation_available: "Recomendación disponible", previewing: "Generando previsualización",
+    preview_ready: "Previsualización lista", applying: "Aplicando", verifying: "Verificando",
+    technical_result: "Resultado técnico", visual_review: "Revisión visual", ready_to_export: "Listo para exportar",
+  };
+  return <div className={`flow-status state-${flow}`}><i />{labels[flow] ?? flow}</div>;
+}
+
+export function JobProgress({ job, onCancel }: { job: JobSnapshot; onCancel: () => void }) {
+  const seconds = (job.elapsedMs / 1000).toFixed(1);
+  const memory = job.memoryBytes ? `${(job.memoryBytes / 1024 / 1024).toFixed(0)} MB` : "—";
+  return <section className={`job-progress job-${job.status}`}>
+    <div className="job-head"><div>{job.status === "running" || job.status === "queued" ? <LoaderCircle className="spin" size={15} /> : <CircleCheck size={15} />}<b>{job.name}</b></div>{job.cancellable && <button onClick={onCancel} title="Cancelar"><X size={15} /></button>}</div>
+    <span>{job.stageIndex}/{job.totalStages} · {job.stage}</span>
+    <progress max="100" value={job.percent} />
+    <div className="job-stats"><span>{job.percent.toFixed(1)} %</span><span>{number.format(job.processedUnits)} / {number.format(job.totalUnits)} {job.unitLabel}</span></div>
+    <div className="job-stats"><span><Clock3 size={11} /> {seconds} s</span><span><MemoryStick size={11} /> {memory}</span></div>
+  </section>;
+}
+
+function ZeroAlphaState({ visualReviewed, onReviewed, onView }: { visualReviewed: boolean; onReviewed: (checked: boolean) => void; onView: (mode: PreviewMode) => void }) {
+  return <>
+    <section className="zero-alpha-state"><CircleCheck size={24} /><div><b>No hay semitransparencias pendientes</b><span>Verificación técnica: alfa únicamente 0 u opaco.</span></div></section>
+    <section><div className="section-title"><span>REVISIÓN VISUAL</span><Eye size={14} /></div>
+      <div className="segmented preview-modes"><button onClick={() => onView("original")}>Original</button><button onClick={() => onView("result")}>Resultado</button><button onClick={() => onView("alpha")}>Canal alfa</button><button onClick={() => onView("partial_overlay")}>Comprobar magenta</button></div>
+      <Check label="Revisé los bordes sobre fondos claros y oscuros" checked={visualReviewed} onChange={onReviewed} />
+      <div className={visualReviewed ? "ready-export" : "review-pending"}>{visualReviewed ? "Listo para exportar" : "Revisión visual pendiente"}</div>
+    </section>
+  </>;
+}
+
+function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return <label className="check-row"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
+}
+
+function RiskBadge({ risk }: { risk: RiskLevel }) {
+  const labels = { low: "Riesgo bajo", medium: "Riesgo medio", high: "Riesgo alto" };
+  return <span className={`risk-badge risk-${risk}`}>{labels[risk]}</span>;
 }
 
 function Histogram({ bins }: { bins: Array<{ count: number }> }) {
@@ -208,7 +381,7 @@ function Histogram({ bins }: { bins: Array<{ count: number }> }) {
     const y = 62 - Math.log1p(bin.count) / Math.log1p(max) * 58;
     return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
   }).join(" ");
-  return <svg className="alpha-histogram" viewBox="0 0 256 64" preserveAspectRatio="none" aria-label="Histograma de alfa"><path d={path} /></svg>;
+  return <svg className="alpha-histogram" viewBox="0 0 256 64" preserveAspectRatio="none" aria-label="Histograma del canal alfa"><path d={path} /></svg>;
 }
 
 function ModulePlaceholder({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
@@ -216,7 +389,3 @@ function ModulePlaceholder({ icon, title, text }: { icon: React.ReactNode; title
 }
 
 function messageOf(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
-function labelFor(treatment: AlphaTreatment) {
-  if (treatment.action === "threshold") return "Aplicar umbral binario de alfa";
-  return treatment.action === "make_opaque" ? "Volver alfa parcial opaco" : "Volver alfa parcial transparente";
-}

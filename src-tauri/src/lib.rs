@@ -11,7 +11,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::dispatcher::dispatch_command,
             commands::document::upload_document_bytes,
-            commands::document::get_document_preview
+            commands::document::get_document_preview,
+            commands::jobs::start_alpha_analysis_job,
+            commands::jobs::start_alpha_preview_job,
+            commands::jobs::start_alpha_treatment_job,
+            commands::jobs::start_export_job,
+            commands::jobs::get_job_status,
+            commands::jobs::cancel_job,
+            commands::jobs::get_job_binary
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar DTF Pro Studio");

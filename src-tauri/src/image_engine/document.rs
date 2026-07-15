@@ -3,7 +3,9 @@ use std::{path::Path, sync::Arc};
 use image::{ColorType, DynamicImage};
 use serde::Serialize;
 
-use crate::alpha_engine::{self, AlphaAnalysis, AlphaTreatment, TreatmentImpact};
+use crate::alpha_engine::{self, AlphaAnalysis, AlphaTreatment, ProgressCallback, TreatmentImpact};
+#[cfg(test)]
+use crate::alpha_engine::{ProtectionOptions, ReconstructionMode};
 
 #[derive(Clone)]
 pub enum PixelBuffer {
@@ -23,6 +25,13 @@ impl PixelBuffer {
         match self {
             Self::Rgba8(values) => values.len() / 4,
             Self::Rgba16(values) => values.len() / 4,
+        }
+    }
+
+    pub fn byte_len(&self) -> usize {
+        match self {
+            Self::Rgba8(values) => values.len(),
+            Self::Rgba16(values) => values.len() * std::mem::size_of::<u16>(),
         }
     }
 }
@@ -150,26 +159,97 @@ impl ImageDocument {
         analysis
     }
 
+    pub fn analyze_with_progress(
+        &mut self,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<AlphaAnalysis, String> {
+        let analysis = alpha_engine::analyze_with_progress(
+            &self.id,
+            self.revision,
+            self.width,
+            self.height,
+            &self.working,
+            progress,
+        )?;
+        self.analysis = Some(analysis.clone());
+        Ok(analysis)
+    }
+
     pub fn treatment_impact(&self, treatment: &AlphaTreatment) -> TreatmentImpact {
-        alpha_engine::estimate_treatment(&self.working, treatment)
+        alpha_engine::plan_treatment(&self.working, self.width, self.height, treatment).impact
     }
 
     pub fn apply_treatment(&mut self, treatment: &AlphaTreatment) -> TreatmentResult {
-        let impact = self.treatment_impact(treatment);
-        let delta =
-            alpha_engine::apply_treatment(&mut self.working, self.width, self.height, treatment);
+        self.apply_treatment_with_progress(treatment, &mut |_, _, _, _| Ok(()))
+            .expect("el tratamiento sin cancelación no puede fallar")
+    }
+
+    pub fn apply_treatment_with_progress(
+        &mut self,
+        treatment: &AlphaTreatment,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<TreatmentResult, String> {
+        let plan = alpha_engine::plan_treatment_with_progress(
+            &self.working,
+            self.width,
+            self.height,
+            treatment,
+            progress,
+        )?;
+        let impact = plan.impact.clone();
+        let mut candidate = self.working.clone();
+        let delta = alpha_engine::apply_treatment_plan(
+            &mut candidate,
+            self.width,
+            self.height,
+            &plan,
+            progress,
+        )?;
+        let next_revision = self.revision + 1;
+        let analysis = alpha_engine::analyze_with_progress(
+            &self.id,
+            next_revision,
+            self.width,
+            self.height,
+            &candidate,
+            &mut |stage, label, processed, total| {
+                let units_per_stage = 1_000_000u64;
+                let fraction_units = if total == 0 {
+                    0
+                } else {
+                    processed.min(total) * units_per_stage / total
+                };
+                progress(
+                    5,
+                    if stage == 4 {
+                        "Verificando cero semitransparencias"
+                    } else {
+                        label
+                    },
+                    (stage.saturating_sub(1) as u64) * units_per_stage + fraction_units,
+                    4 * units_per_stage,
+                )
+            },
+        )?;
+        if impact.pending_pixels == 0 && !analysis.verified_solid_alpha {
+            return Err(format!(
+                "ALPHA_ZERO_VERIFICATION_FAILED: quedan {} píxeles semitransparentes",
+                analysis.partial_alpha_pixels
+            ));
+        }
+        self.working = candidate;
         self.revision += 1;
         self.history.push(HistoryEntry {
             label: treatment.label().into(),
             delta,
         });
         self.future.clear();
-        let analysis = self.analyze();
-        TreatmentResult {
+        self.analysis = Some(analysis.clone());
+        Ok(TreatmentResult {
             revision: self.revision,
             impact,
             analysis,
-        }
+        })
     }
 
     pub fn undo(&mut self) -> bool {
@@ -203,18 +283,37 @@ impl ImageDocument {
             },
             mode,
         );
-        let mut bytes = Vec::new();
-        {
-            let mut encoder = png::Encoder::new(&mut bytes, self.width, self.height);
-            encoder.set_color(png::ColorType::Rgba);
-            encoder.set_depth(png::BitDepth::Eight);
-            encoder.set_compression(png::Compression::Fastest);
-            let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
-            writer
-                .write_image_data(&rgba)
-                .map_err(|error| error.to_string())?;
-        }
-        Ok(bytes)
+        encode_preview_png(self.width, self.height, &rgba)
+    }
+
+    pub fn treatment_preview_png(
+        &self,
+        treatment: &AlphaTreatment,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<(Vec<u8>, TreatmentImpact), String> {
+        let plan = alpha_engine::plan_treatment_with_progress(
+            &self.working,
+            self.width,
+            self.height,
+            treatment,
+            progress,
+        )?;
+        progress(3, "Coloreando impacto", 0, self.height as u64)?;
+        let rgba = alpha_engine::treatment_preview_rgba8(&self.working, &plan);
+        progress(
+            3,
+            "Coloreando impacto",
+            self.height as u64,
+            self.height as u64,
+        )?;
+        progress(4, "Codificando previsualización", 0, 1)?;
+        let png = encode_preview_png(self.width, self.height, &rgba)?;
+        progress(4, "Codificando previsualización", 1, 1)?;
+        Ok((png, plan.impact))
+    }
+
+    pub fn operation_memory_bytes(&self) -> u64 {
+        (self.original.byte_len() + self.working.byte_len()) as u64
     }
 
     pub fn export_verified(
@@ -223,6 +322,17 @@ impl ImageDocument {
         require_solid_alpha: bool,
         dpi: u32,
     ) -> Result<ExportVerification, String> {
+        self.export_verified_with_progress(path, require_solid_alpha, dpi, &mut |_, _, _, _| Ok(()))
+    }
+
+    pub fn export_verified_with_progress(
+        &self,
+        path: &Path,
+        require_solid_alpha: bool,
+        dpi: u32,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<ExportVerification, String> {
+        progress(1, "Validando alfa", 0, 1)?;
         let before = alpha_engine::analyze(
             &self.id,
             self.revision,
@@ -236,37 +346,70 @@ impl ImageDocument {
                 before.partial_alpha_pixels
             ));
         }
+        progress(1, "Validando alfa", 1, 1)?;
+        progress(2, "Codificando PNG", 0, 1)?;
         let encoded = self.encode_png(dpi)?;
+        progress(2, "Codificando PNG", 1, 1)?;
+        progress(3, "Escribiendo archivo", 0, encoded.len() as u64)?;
         std::fs::write(path, &encoded)
             .map_err(|error| format!("No se pudo guardar el PNG: {error}"))?;
-        let reopened = std::fs::read(path)
-            .map_err(|error| format!("No se pudo reabrir el PNG exportado: {error}"))?;
-        let (mut verification_document, imported) =
-            ImageDocument::decode("export_verification".into(), "export.png".into(), reopened)?;
-        let verification = verification_document.analyze();
-        if imported.width != self.width || imported.height != self.height {
-            return Err("EXPORT_DIMENSIONS_MISMATCH: las dimensiones cambiaron al exportar".into());
+        if let Err(error) = progress(
+            3,
+            "Escribiendo archivo",
+            encoded.len() as u64,
+            encoded.len() as u64,
+        ) {
+            let _ = std::fs::remove_file(path);
+            return Err(error);
         }
-        if imported.bit_depth != self.working.bit_depth() {
-            return Err("EXPORT_DEPTH_MISMATCH: la profundidad cambió al exportar".into());
+        let verification_result = (|| {
+            progress(4, "Reabriendo exportación", 0, 1)?;
+            let reopened = std::fs::read(path)
+                .map_err(|error| format!("No se pudo reabrir el PNG exportado: {error}"))?;
+            progress(4, "Reabriendo exportación", 1, 1)?;
+            progress(5, "Decodificando exportación", 0, reopened.len() as u64)?;
+            let (mut verification_document, imported) =
+                ImageDocument::decode("export_verification".into(), "export.png".into(), reopened)?;
+            progress(
+                5,
+                "Decodificando exportación",
+                imported.source_byte_length as u64,
+                imported.source_byte_length as u64,
+            )?;
+            progress(6, "Verificando dimensiones y profundidad", 0, 1)?;
+            let verification = verification_document.analyze();
+            if imported.width != self.width || imported.height != self.height {
+                return Err(
+                    "EXPORT_DIMENSIONS_MISMATCH: las dimensiones cambiaron al exportar".into(),
+                );
+            }
+            if imported.bit_depth != self.working.bit_depth() {
+                return Err("EXPORT_DEPTH_MISMATCH: la profundidad cambió al exportar".into());
+            }
+            if require_solid_alpha && !verification.verified_solid_alpha {
+                return Err(format!(
+                    "EXPORT_VERIFICATION_FAILED: se reabrió con {} píxeles semitransparentes",
+                    verification.partial_alpha_pixels
+                ));
+            }
+            progress(6, "Verificando dimensiones y profundidad", 1, 1)?;
+            progress(7, "Confirmando cero semitransparencias", 1, 1)?;
+            Ok::<_, String>(ExportVerification {
+                path: path.to_string_lossy().into_owned(),
+                width: imported.width,
+                height: imported.height,
+                bit_depth: imported.bit_depth,
+                dpi,
+                file_size_bytes: encoded.len() as u64,
+                partial_alpha_pixels: verification.partial_alpha_pixels,
+                verified_solid_alpha: verification.verified_solid_alpha,
+                reopened_and_verified: true,
+            })
+        })();
+        if verification_result.is_err() {
+            let _ = std::fs::remove_file(path);
         }
-        if require_solid_alpha && !verification.verified_solid_alpha {
-            return Err(format!(
-                "EXPORT_VERIFICATION_FAILED: se reabrió con {} píxeles semitransparentes",
-                verification.partial_alpha_pixels
-            ));
-        }
-        Ok(ExportVerification {
-            path: path.to_string_lossy().into_owned(),
-            width: imported.width,
-            height: imported.height,
-            bit_depth: imported.bit_depth,
-            dpi,
-            file_size_bytes: encoded.len() as u64,
-            partial_alpha_pixels: verification.partial_alpha_pixels,
-            verified_solid_alpha: verification.verified_solid_alpha,
-            reopened_and_verified: true,
-        })
+        verification_result
     }
 
     fn encode_png(&self, dpi: u32) -> Result<Vec<u8>, String> {
@@ -304,6 +447,21 @@ impl ImageDocument {
         }
         Ok(bytes)
     }
+}
+
+fn encode_preview_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_compression(png::Compression::Fastest);
+        let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
+        writer
+            .write_image_data(rgba)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(bytes)
 }
 
 fn to_rgba16(image: DynamicImage) -> Vec<u16> {
@@ -370,6 +528,8 @@ mod tests {
         document.apply_treatment(&AlphaTreatment::Threshold {
             threshold: 128,
             reconstruct_radius: 2,
+            reconstruction_mode: ReconstructionMode::Manual,
+            protections: ProtectionOptions::default(),
         });
         assert_eq!(document.source_bytes.as_slice(), original.as_slice());
         assert!(document.analysis.as_ref().unwrap().verified_solid_alpha);
@@ -410,6 +570,8 @@ mod tests {
         document.apply_treatment(&AlphaTreatment::Threshold {
             threshold: 128,
             reconstruct_radius: 2,
+            reconstruction_mode: ReconstructionMode::Manual,
+            protections: ProtectionOptions::default(),
         });
         let path = std::env::temp_dir().join(format!("dtf-pro-export-{}.png", std::process::id()));
         let result = document.export_verified(&path, true, 300).unwrap();
@@ -430,5 +592,29 @@ mod tests {
         let error = document.export_verified(&path, true, 300).unwrap_err();
         assert!(error.starts_with("EXPORT_BLOCKED_PARTIAL_ALPHA"));
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn cancelled_treatment_does_not_partially_mutate_document() {
+        let (mut document, _) =
+            ImageDocument::decode("cancel".into(), "fixture.png".into(), png8_all_alpha()).unwrap();
+        let treatment = AlphaTreatment::Threshold {
+            threshold: 128,
+            reconstruct_radius: 2,
+            reconstruction_mode: ReconstructionMode::Manual,
+            protections: ProtectionOptions::default(),
+        };
+        let result =
+            document.apply_treatment_with_progress(&treatment, &mut |stage, _, processed, _| {
+                if stage == 4 && processed > 0 {
+                    Err("JOB_CANCELLED".into())
+                } else {
+                    Ok(())
+                }
+            });
+        assert_eq!(result.unwrap_err(), "JOB_CANCELLED");
+        assert_eq!(document.revision, 0);
+        assert!(document.history.is_empty());
+        assert_eq!(document.analyze().partial_alpha_pixels, 254);
     }
 }

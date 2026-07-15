@@ -1,18 +1,22 @@
 import { create } from "zustand";
 import { clampZoom, fitRect, zoomAt } from "../canvas/camera";
 import type { Camera, ModuleId, PreviewBackground, StudioDocument, ToolId } from "../types/document";
-import type { AlphaAnalysis, PreviewMode } from "../types/alpha";
+import type { AlphaAnalysis, JobSnapshot, PreviewMode, TransparencyFlowState } from "../types/alpha";
 
 type StudioState = {
   activeModule: ModuleId;
   activeTool: ToolId;
   previewBackground: PreviewBackground;
+  customBackgroundColor: string;
   document: StudioDocument | null;
   alphaAnalysis: AlphaAnalysis | null;
   alphaStatus: "idle" | "analyzing" | "applying" | "complete" | "error";
   alphaError: string | null;
   alphaRegionIndex: number;
   previewMode: PreviewMode;
+  activeJob: JobSnapshot | null;
+  transparencyFlow: TransparencyFlowState;
+  visualReviewComplete: boolean;
   notification: { kind: "success" | "error" | "info"; text: string } | null;
   camera: Camera;
   viewport: { width: number; height: number };
@@ -21,11 +25,15 @@ type StudioState = {
   setModule: (module: ModuleId) => void;
   setTool: (tool: ToolId) => void;
   setPreviewBackground: (background: PreviewBackground) => void;
+  setCustomBackgroundColor: (color: string) => void;
   setDocument: (document: StudioDocument | null) => void;
   updateDocument: (patch: Partial<StudioDocument>) => void;
   setAlphaAnalysis: (analysis: AlphaAnalysis | null) => void;
   setAlphaStatus: (status: StudioState["alphaStatus"], error?: string | null) => void;
   setPreviewMode: (mode: PreviewMode) => void;
+  setActiveJob: (job: JobSnapshot | null) => void;
+  setTransparencyFlow: (flow: TransparencyFlowState) => void;
+  setVisualReviewComplete: (complete: boolean) => void;
   setRegionIndex: (index: number) => void;
   focusRect: (rect: { minX: number; minY: number; maxX: number; maxY: number }) => void;
   setNotification: (notification: StudioState["notification"]) => void;
@@ -46,12 +54,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   activeModule: "transparency",
   activeTool: "select",
   previewBackground: "checker-small",
+  customBackgroundColor: "#31506b",
   document: null,
   alphaAnalysis: null,
   alphaStatus: "idle",
   alphaError: null,
   alphaRegionIndex: 0,
   previewMode: "original",
+  activeJob: null,
+  transparencyFlow: "unprocessed",
+  visualReviewComplete: false,
   notification: null,
   camera: initialCamera,
   viewport: { width: 900, height: 600 },
@@ -60,16 +72,20 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   setModule: (activeModule) => set({ activeModule }),
   setTool: (activeTool) => set({ activeTool }),
   setPreviewBackground: (previewBackground) => set({ previewBackground }),
+  setCustomBackgroundColor: (customBackgroundColor) => set({ customBackgroundColor, previewBackground: "custom" }),
   setDocument: (document) => {
     const previous = get().document;
     if (previous?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(previous.previewUrl);
-    set({ document, alphaAnalysis: null, alphaStatus: "idle", alphaError: null, alphaRegionIndex: 0, previewMode: "original", history: document ? [`Abrir ${document.name}`] : [], future: [] });
+    set({ document, alphaAnalysis: null, alphaStatus: "idle", alphaError: null, alphaRegionIndex: 0, previewMode: "original", activeJob: null, transparencyFlow: "unprocessed", visualReviewComplete: false, history: document ? [`Abrir ${document.name}`] : [], future: [] });
     queueMicrotask(() => get().fitDocument());
   },
   updateDocument: (patch) => set((state) => ({ document: state.document ? { ...state.document, ...patch } : null })),
   setAlphaAnalysis: (alphaAnalysis) => set({ alphaAnalysis, alphaRegionIndex: 0 }),
   setAlphaStatus: (alphaStatus, alphaError = null) => set({ alphaStatus, alphaError }),
   setPreviewMode: (previewMode) => set({ previewMode }),
+  setActiveJob: (activeJob) => set({ activeJob }),
+  setTransparencyFlow: (transparencyFlow) => set({ transparencyFlow }),
+  setVisualReviewComplete: (visualReviewComplete) => set({ visualReviewComplete }),
   setRegionIndex: (alphaRegionIndex) => set({ alphaRegionIndex }),
   focusRect: (rect) => {
     const { viewport } = get();

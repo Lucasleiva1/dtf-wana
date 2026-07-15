@@ -11,6 +11,8 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
   const analysis = useStudioStore((state) => state.alphaAnalysis);
   const setModule = useStudioStore((state) => state.setModule);
   const setNotification = useStudioStore((state) => state.setNotification);
+  const setActiveJob = useStudioStore((state) => state.setActiveJob);
+  const visualReviewComplete = useStudioStore((state) => state.visualReviewComplete);
   const [exporting, setExporting] = useState(false);
   const exportDocument = async () => {
     if (!document) return;
@@ -24,9 +26,14 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
       setNotification({ kind: "error", text: `Exportación bloqueada: quedan ${analysis.partialAlphaPixels.toLocaleString("es-AR")} píxeles semitransparentes.` });
       return;
     }
+    if (!visualReviewComplete) {
+      setModule("transparency");
+      setNotification({ kind: "error", text: "Completá la revisión visual de bordes antes de exportar." });
+      return;
+    }
     setExporting(true);
     try {
-      const result = await exportVerifiedDocument(document);
+      const result = await exportVerifiedDocument(document, (job) => setActiveJob(job));
       if (result) setNotification({ kind: "success", text: `PNG reabierto y verificado: cero semitransparencias · ${result.dpi} PPP.` });
     } catch (reason) {
       setNotification({ kind: "error", text: reason instanceof Error ? reason.message : String(reason) });

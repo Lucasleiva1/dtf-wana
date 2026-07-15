@@ -5,10 +5,12 @@ import { Inspector } from "../components/Inspector";
 import { StatusBar } from "../components/StatusBar";
 import { ToolRail } from "../components/ToolRail";
 import { TopBar } from "../components/TopBar";
+import { JobProgress } from "../components/Inspector";
 import { dispatchCommand, type SystemCapabilities } from "../lib/commandBus";
 import { changePixelHistory } from "../lib/historyService";
 import { useStudioStore } from "../stores/studioStore";
 import { importImageFile } from "./importImage";
+import { cancelJob } from "../lib/jobService";
 
 export function App() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -17,6 +19,7 @@ export function App() {
   const setDocument = useStudioStore((state) => state.setDocument);
   const notification = useStudioStore((state) => state.notification);
   const setNotification = useStudioStore((state) => state.setNotification);
+  const activeJob = useStudioStore((state) => state.activeJob);
   const open = () => inputRef.current?.click();
 
   useEffect(() => {
@@ -60,6 +63,7 @@ export function App() {
       <StatusBar system={system} />
       {error && <div className="toast error" role="alert"><span>{error}</span><button onClick={() => setError(null)}>×</button></div>}
       {notification && <div className={`toast ${notification.kind}`} role="status"><span>{notification.text}</span><button onClick={() => setNotification(null)}>×</button></div>}
+      {activeJob && (activeJob.status === "queued" || activeJob.status === "running") && <div className="global-job-progress"><JobProgress job={activeJob} onCancel={() => void cancelJob(activeJob.id)} /></div>}
     </div>
   );
 }

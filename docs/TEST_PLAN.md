@@ -23,4 +23,6 @@
 4. Navegación visita todas las regiones una sola vez y restaura cámara.
 5. Original bit a bit intacto.
 6. Sin bloqueo perceptible de UI en fixture grande.
-
+7. Cancelar un tratamiento no modifica revisión, historial ni píxeles.
+8. La recomendación es determinística y permanece dentro de su rango seguro.
+9. Las protecciones de detalle resuelven alfa binario y la previsualización usa rojo/cian/magenta exactos.

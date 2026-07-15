@@ -17,9 +17,11 @@ export function CanvasControls() {
   const actualSize = useStudioStore((state) => state.actualSize);
   const background = useStudioStore((state) => state.previewBackground);
   const setBackground = useStudioStore((state) => state.setPreviewBackground);
+  const customColor = useStudioStore((state) => state.customBackgroundColor);
+  const setCustomColor = useStudioStore((state) => state.setCustomBackgroundColor);
   return (
     <div className="canvas-controls">
-      <div className="background-controls"><Grid3X3 size={14} /><span>Fondo</span>{backgrounds.map(([id, label, className]) => <button key={id} title={label} aria-label={label} className={`${className} ${background === id ? "active" : ""}`} onClick={() => setBackground(id)} />)}</div>
+      <div className="background-controls"><Grid3X3 size={14} /><span>Fondo</span>{backgrounds.map(([id, label, className]) => <button key={id} title={label} aria-label={label} className={`${className} ${background === id ? "active" : ""}`} onClick={() => setBackground(id)} />)}<label className={`custom-background ${background === "custom" ? "active" : ""}`} title="Fondo personalizado"><input aria-label="Color de fondo personalizado" type="color" value={customColor} onChange={(event) => setCustomColor(event.target.value)} /></label></div>
       <div className="zoom-controls"><button title="Encajar artboard" onClick={fitDocument}><Maximize size={14} /></button><button title="Vista al 100 %" onClick={actualSize}><Maximize2 size={14} /></button><ZoomIn size={14} /><input aria-label="Zoom" type="range" min="2" max="800" value={Math.min(800, Math.round(camera.zoom * 100))} onChange={(event) => setZoom(Number(event.target.value) / 100)} /><output>{Math.round(camera.zoom * 100)}%</output></div>
     </div>
   );
