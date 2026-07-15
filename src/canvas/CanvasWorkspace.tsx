@@ -407,8 +407,8 @@ export function CanvasWorkspace({ onOpen }: { onOpen: () => void }) {
         top: camera.y,
         width: document.width * camera.zoom,
         height: document.height * camera.zoom,
-        "--scan-progress": `${Math.max(0, Math.min(1, scanRatio)) * 100}%`,
-      } as React.CSSProperties}><div /><i /><span>{activeJob.stage}</span></div>}
+        "--scan-real-progress": `${Math.max(0, Math.min(1, scanRatio)) * 100}%`,
+      } as React.CSSProperties}><div /><i /><span>{activeJob.stage}<small>{activeJob.percent.toFixed(0)} %</small></span></div>}
       {document && residueGesture && <svg className="residue-gesture-overlay" style={{ left: camera.x, top: camera.y, width: document.width * camera.zoom, height: document.height * camera.zoom }} viewBox={`0 0 ${document.width} ${document.height}`} preserveAspectRatio="none">
         {residueGesture.tool === "residue-rectangle" ? <rect x={residueGesture.points[0].x} y={residueGesture.points[0].y} width={residueGesture.points[residueGesture.points.length - 1].x - residueGesture.points[0].x} height={residueGesture.points[residueGesture.points.length - 1].y - residueGesture.points[0].y} /> : <polyline points={residueGesture.points.map((point) => `${point.x},${point.y}`).join(" ")} className={residueGesture.tool === "residue-brush" ? "brush-stroke" : "lasso-stroke"} style={residueGesture.tool === "residue-brush" ? { strokeWidth: residueBrushSize } : undefined} />}
       </svg>}

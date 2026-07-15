@@ -1,20 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ChevronLeft, ChevronRight, CircleCheck, Clock3, Eye, Layers3,
-  LoaderCircle, MemoryStick, Pause, ScanSearch, ShieldCheck, Sparkles, X,
+  LoaderCircle, MemoryStick, Pause, ScanSearch, ShieldCheck, Sparkles, Trash2, X,
 } from "lucide-react";
 import { getDocumentPreview } from "../lib/alphaService";
 import { cancelJob, runAnalysisJob, runPreviewJob, runTreatmentJob } from "../lib/jobService";
+import {
+  defaultInspectorZoneLayout, normalizeInspectorZoneLayout, placeInspectorZone,
+  type DropPosition, type InspectorZoneId, type InspectorZoneLayout,
+} from "../lib/inspectorLayout";
 import { useStudioStore } from "../stores/studioStore";
 import type {
   AlphaTreatment, JobSnapshot, PreviewMode, ProtectionOptions, ReconstructionMode,
   RiskLevel, TreatmentImpact,
 } from "../types/alpha";
 import type { ModuleId } from "../types/document";
+import { InspectorZone } from "./InspectorZone";
 import { ResidueCleanup } from "./ResidueCleanup";
 
 const tabs: Array<[ModuleId, string]> = [["background", "Quitar fondo"], ["transparency", "Transparencias"], ["separation", "Separar"]];
 const number = new Intl.NumberFormat("es-AR");
+const inspectorLayoutStorageKey = "dtf-pro-studio.inspector-layout.v1";
+interface ZoneDragState {
+  source: InspectorZoneId;
+  target: InspectorZoneId;
+  position: DropPosition;
+  x: number;
+  y: number;
+}
 const defaultProtections: ProtectionOptions = {
   protectConnectedTexture: true,
   protectFineLines: true,
@@ -57,6 +70,7 @@ function TransparencyInspector() {
   const setActiveJob = useStudioStore((state) => state.setActiveJob);
   const setFlow = useStudioStore((state) => state.setTransparencyFlow);
   const setVisualReviewComplete = useStudioStore((state) => state.setVisualReviewComplete);
+  const residueMask = useStudioStore((state) => state.residueMask);
 
   const [threshold, setThreshold] = useState(128);
   const [radius, setRadius] = useState(2);
@@ -66,7 +80,21 @@ function TransparencyInspector() {
   const [impactBlob, setImpactBlob] = useState<ImageBitmap | null>(null);
   const [previewDirty, setPreviewDirty] = useState(false);
   const [visualReviewed, setVisualReviewed] = useState(false);
+  const [zoneLayout, setZoneLayout] = useState<InspectorZoneLayout>(() => {
+    try {
+      const saved = window.localStorage.getItem(inspectorLayoutStorageKey);
+      return saved ? normalizeInspectorZoneLayout(JSON.parse(saved)) : structuredClone(defaultInspectorZoneLayout);
+    } catch {
+      return structuredClone(defaultInspectorZoneLayout);
+    }
+  });
   const previewSequence = useRef(0);
+  const [zoneDrag, setZoneDrag] = useState<ZoneDragState | null>(null);
+  const zoneDragRef = useRef<ZoneDragState | null>(null);
+
+  useEffect(() => {
+    window.localStorage.setItem(inspectorLayoutStorageKey, JSON.stringify(zoneLayout));
+  }, [zoneLayout]);
 
   const recommendation = analysis?.recommendation ?? null;
   const treatment = useMemo<AlphaTreatment>(() => ({
@@ -217,8 +245,87 @@ function TransparencyInspector() {
   const safeEnd = recommendation ? recommendation.safeMax / analysis!.maxAlpha * 100 : 60;
   const busy = activeJob?.status === "queued" || activeJob?.status === "running";
 
+  const toggleZone = (id: InspectorZoneId) => setZoneLayout((current) => ({
+    ...current,
+    collapsed: { ...current.collapsed, [id]: !current.collapsed[id] },
+  }));
+
+  const locateZoneDrop = (y: number) => {
+    const zones = Array.from(window.document.querySelectorAll<HTMLElement>(".inspector-zone"))
+      .map((zone) => {
+        const id = zone.dataset.zoneId as InspectorZoneId | undefined;
+        const header = zone.querySelector<HTMLElement>(".inspector-zone-header");
+        return id && header ? { id, rect: header.getBoundingClientRect() } : null;
+      })
+      .filter((zone): zone is { id: InspectorZoneId; rect: DOMRect } => zone !== null);
+    if (!zones.length) return null;
+    const nearest = zones.reduce((best, zone) => Math.abs(y - (zone.rect.top + zone.rect.height / 2)) < Math.abs(y - (best.rect.top + best.rect.height / 2)) ? zone : best);
+    return { target: nearest.id, position: (y < nearest.rect.top + nearest.rect.height / 2 ? "before" : "after") as DropPosition };
+  };
+
+  const startZoneDrag = (source: InspectorZoneId, x: number, y: number) => {
+    const location = locateZoneDrop(y) ?? { target: source, position: "after" as DropPosition };
+    const next = { source, ...location, x, y };
+    zoneDragRef.current = next;
+    setZoneDrag(next);
+  };
+
+  const moveZoneDrag = (x: number, y: number) => {
+    const current = zoneDragRef.current;
+    const location = locateZoneDrop(y);
+    if (!current || !location) return;
+    const next = { ...current, ...location, x, y };
+    zoneDragRef.current = next;
+    setZoneDrag(next);
+  };
+
+  const finishZoneDrag = (commit: boolean) => {
+    const current = zoneDragRef.current;
+    zoneDragRef.current = null;
+    setZoneDrag(null);
+    if (!commit || !current) return;
+    setZoneLayout((layout) => ({ ...layout, order: placeInspectorZone(layout.order, current.source, current.target, current.position) }));
+  };
+
+  const unprotectCurrentRegion = () => {
+    const region = analysis?.regions[regionIndex];
+    if (!region) return;
+    setProtections((current) => ({ ...current, preservedRegionIds: current.preservedRegionIds.filter((id) => id !== region.id) }));
+    setNotification({ kind: "info", text: "La protección manual de la región fue retirada. Una selección manual puede eliminarla." });
+  };
+
+  const alphaSummary = !document
+    ? "Sin imagen"
+    : !analysis
+      ? "Sin analizar"
+      : analysis.partialAlphaPixels
+        ? `${number.format(analysis.partialAlphaPixels)} semitransparencias`
+        : "Cero semitransparencias";
+  const residueSummary = residueMask.hasSelection
+    ? `${number.format(residueMask.selectedPixels)} px seleccionados`
+    : analysis
+      ? "Máscara temporal sin aplicar"
+      : "Disponible después del análisis";
+
   return (
     <div className="inspector-content transparency-inspector">
+      <div className={`inspector-zone-stack${zoneDrag ? " is-reordering" : ""}`}>
+        {zoneDrag && <div className="zone-drag-ghost" style={{ left: zoneDrag.x + 10, top: zoneDrag.y + 10 }}>{zoneDrag.source === "alpha" ? "Tratamiento de transparencias" : "Limpieza de residuos"}</div>}
+        {zoneLayout.order.map((zoneId) => <InspectorZone
+          key={zoneId}
+          id={zoneId}
+          title={zoneId === "alpha" ? "Tratamiento de transparencias" : "Limpieza de residuos"}
+          summary={zoneId === "alpha" ? alphaSummary : residueSummary}
+          icon={zoneId === "alpha" ? <ScanSearch size={15} /> : <Trash2 size={15} />}
+          collapsed={zoneLayout.collapsed[zoneId]}
+          dragging={zoneDrag?.source === zoneId}
+          dropPosition={zoneDrag?.target === zoneId ? zoneDrag.position : null}
+          onToggle={() => toggleZone(zoneId)}
+          onDragStart={startZoneDrag}
+          onDragMove={moveZoneDrag}
+          onDragEnd={finishZoneDrag}
+        >
+          {zoneId === "alpha" ? <>
       <FlowStatus flow={flow} />
 
       <section>
@@ -329,12 +436,16 @@ function TransparencyInspector() {
           <small className="microcopy">El documento no cambia hasta confirmar. La operación completa puede deshacerse.</small>
         </section>
       </>}
-      {analysis && <ResidueCleanup protectedRegionIds={protections.preservedRegionIds} onUnprotectCurrent={() => {
-        const region = analysis.regions[regionIndex];
-        if (!region) return;
-        setProtections((current) => ({ ...current, preservedRegionIds: current.preservedRegionIds.filter((id) => id !== region.id) }));
-        setNotification({ kind: "info", text: "La protección manual de la región fue retirada. Una selección manual puede eliminarla." });
-      }} />}
+          </> : analysis ? <ResidueCleanup
+            protectedRegionIds={protections.preservedRegionIds}
+            onUnprotectCurrent={unprotectCurrentRegion}
+          /> : <section className="residue-unavailable">
+            <Trash2 size={20} />
+            <b>Limpieza manual preparada</b>
+            <p className="microcopy">Analizá primero el canal alfa para habilitar la detección y la máscara temporal de residuos.</p>
+          </section>}
+        </InspectorZone>)}
+      </div>
     </div>
   );
 }
