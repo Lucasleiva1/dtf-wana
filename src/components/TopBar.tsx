@@ -3,6 +3,7 @@ import { Download, FolderOpen, LoaderCircle, Redo2, RotateCcw, Save, Settings2, 
 import { exportVerifiedDocument } from "../lib/alphaService";
 import { changePixelHistory } from "../lib/historyService";
 import { useStudioStore } from "../stores/studioStore";
+import { UpdatePanel } from "./UpdatePanel";
 
 export function TopBar({ onOpen }: { onOpen: () => void }) {
   const history = useStudioStore((state) => state.history);
@@ -14,6 +15,7 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
   const setActiveJob = useStudioStore((state) => state.setActiveJob);
   const visualReviewComplete = useStudioStore((state) => state.visualReviewComplete);
   const [exporting, setExporting] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const exportDocument = async () => {
     if (!document) return;
     if (!analysis) {
@@ -39,7 +41,7 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
       setNotification({ kind: "error", text: reason instanceof Error ? reason.message : String(reason) });
     } finally { setExporting(false); }
   };
-  return (
+  return <>
     <header className="topbar">
       <div className="brand"><span className="brand-mark">D</span><b>DTF Pro Studio</b></div>
       <nav className="app-menu" aria-label="Menú principal"><button>Archivo</button><button>Editar</button><button>Ver</button></nav>
@@ -51,7 +53,8 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
         <button onClick={() => void changePixelHistory("redo")} disabled={!future.length} title="Rehacer (Ctrl+Y)"><Redo2 size={16} /></button>
         <button onClick={() => useStudioStore.setState({ camera: { x: 120, y: 80, zoom: 1 } })} title="Restablecer vista"><RotateCcw size={16} /></button>
       </div>
-      <div className="topbar-end"><button title="Configuración"><Settings2 size={16} /><span>Ajustes</span></button><button className="export-button" disabled={!document || exporting} onClick={exportDocument}>{exporting ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}<span>{exporting ? "Verificando" : "Exportar"}</span></button></div>
+      <div className="topbar-end"><button title="Configuración y actualizaciones" onClick={() => setSettingsOpen(true)}><Settings2 size={16} /><span>Ajustes</span></button><button className="export-button" disabled={!document || exporting} onClick={exportDocument}>{exporting ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}<span>{exporting ? "Verificando" : "Exportar"}</span></button></div>
     </header>
-  );
+    {settingsOpen && <UpdatePanel onClose={() => setSettingsOpen(false)} />}
+  </>;
 }

@@ -1,0 +1,56 @@
+name: Publicar versión de escritorio firmada
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Etiqueta de la versión (por ejemplo app-v0.3.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows NSIS firmado
+    runs-on: windows-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Habilitar pnpm
+        run: corepack enable
+
+      - name: Configurar Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Caché de Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Compilar y publicar Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ inputs.tag }}
+          releaseName: DTF Pro Studio ${{ inputs.tag }}
+          releaseBody: |
+            Instalador firmado de DTF Pro Studio para Windows.
+            Incluye los artefactos requeridos por el actualizador integrado.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+

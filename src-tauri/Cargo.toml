@@ -1,6 +1,6 @@
 [package]
 name = "dtf-pro-studio"
-version = "0.1.0"
+version = "0.2.0"
 description = "Preparación profesional de imágenes para DTF"
 authors = ["DTF Pro Studio"]
 edition = "2021"
@@ -20,4 +20,6 @@ serde_json = "1"
 sysinfo = "0.38"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-process = "2.3.1"
+tauri-plugin-updater = "2.10.1"
 thiserror = "2"
