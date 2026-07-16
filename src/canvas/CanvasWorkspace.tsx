@@ -20,7 +20,7 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
   const hostRef = useRef<HTMLDivElement>(null);
   const pixiRef = useRef<PixiWorkspace | null>(null);
   const [rendererReady, setRendererReady] = useState(0);
-  const [rendererError, setRendererError] = useState(false);
+  const [rendererError, setRendererError] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [residueGesture, setResidueGesture] = useState<ResidueGesture | null>(null);
   const gestureRef = useRef<ResidueGesture | null>(null);
@@ -58,10 +58,12 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
     const app = new Application();
     const world = new Container();
     const artboard = new Graphics();
+    setRendererError(null);
     void app.init({
       resizeTo: host,
-      preference: "webgl",
-      powerPreference: "high-performance",
+      preference: ["webgl"],
+      // This remains hardware WebGL. Omitting the optional adapter hint avoids
+      // a WebView2/driver failure while Windows selects the working GPU.
       antialias: false,
       backgroundAlpha: 0,
       resolution: Math.min(devicePixelRatio, 1.5),
@@ -83,7 +85,12 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
         setRendererReady((value) => value + 1);
         setViewport({ width: host.clientWidth, height: host.clientHeight });
       })
-      .catch(() => setRendererError(true));
+      .catch((reason: unknown) => {
+        const detail = reason instanceof Error ? reason.message : String(reason);
+        console.error("No se pudo iniciar el renderizador WebGL", reason);
+        setRendererInfo("WebGL no iniciado");
+        setRendererError(detail);
+      });
 
     const observer = new ResizeObserver(() => setViewport({ width: host.clientWidth, height: host.clientHeight }));
     observer.observe(host);
@@ -429,7 +436,7 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
         <button className="remove-image" onClick={() => { setContextMenu(null); onRemove(); }}><span><ImageMinus size={14} /> Quitar imagen</span><small>No borra el archivo</small></button>
       </div>}
       {showMaskActivity && <div className="mask-update-indicator">Actualizando máscara…</div>}
-      {rendererError && <div className="renderer-error">WebGL no está disponible. Se habilitará el fallback 2D.</div>}
+      {rendererError && <div className="renderer-error">No se pudo iniciar WebGL: {rendererError}</div>}
       {imageError && <div className="renderer-error">No se pudo crear la vista previa: {imageError}</div>}
     </div>
   );
