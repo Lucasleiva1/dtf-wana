@@ -18,6 +18,7 @@ import type { ModuleId } from "../types/document";
 import { InspectorZone } from "./InspectorZone";
 import { ResidueCleanup } from "./ResidueCleanup";
 import { EdgePolish } from "./EdgePolish";
+import { BatchSetupPanel, type BatchController } from "./BatchPanel";
 
 const tabs: Array<[ModuleId, string]> = [["background", "Quitar fondo"], ["transparency", "Transparencias"], ["separation", "Separar"]];
 const number = new Intl.NumberFormat("es-AR");
@@ -37,22 +38,22 @@ const defaultProtections: ProtectionOptions = {
   preservedRegionIds: [],
 };
 
-export function Inspector() {
+export function Inspector({ batchMode = false, batch, onExitBatch }: { batchMode?: boolean; batch?: BatchController; onExitBatch?: () => void }) {
   const activeModule = useStudioStore((state) => state.activeModule);
   const setModule = useStudioStore((state) => state.setModule);
   return (
     <aside className="inspector">
       <div className="module-tabs" role="tablist" aria-label="Módulos">
-        {tabs.map(([id, label]) => <button role="tab" aria-selected={activeModule === id} className={activeModule === id ? "active" : ""} onClick={() => setModule(id)} key={id}>{label}</button>)}
+        {tabs.map(([id, label]) => <button role="tab" disabled={batchMode && id !== "transparency"} aria-selected={activeModule === id} className={activeModule === id ? "active" : ""} onClick={() => setModule(id)} key={id}>{label}</button>)}
       </div>
-      {activeModule === "transparency" && <TransparencyInspector />}
+      {activeModule === "transparency" && <TransparencyInspector batch={batchMode ? batch : undefined} onExitBatch={onExitBatch} />}
       {activeModule === "background" && <ModulePlaceholder icon={<CircleCheck size={24} />} title="Quitar fondo" text="Primero manual y varita. La IA se habilita sólo después de cerrar Transparencias." />}
       {activeModule === "separation" && <ModulePlaceholder icon={<Layers3 size={24} />} title="Separar elementos" text="SAM, capas y exportación individual se implementan al final para proteger estabilidad y memoria." />}
     </aside>
   );
 }
 
-function TransparencyInspector() {
+function TransparencyInspector({ batch, onExitBatch }: { batch?: BatchController; onExitBatch?: () => void }) {
   const document = useStudioStore((state) => state.document);
   const analysis = useStudioStore((state) => state.alphaAnalysis);
   const error = useStudioStore((state) => state.alphaError);
@@ -313,14 +314,15 @@ function TransparencyInspector() {
       ? "Opcional · alfa 0/255 verificado"
       : `${number.format(analysis.partialAlphaPixels)} semitransparencias pendientes`;
   const zoneMeta: Record<InspectorZoneId, { title: string; summary: string; icon: React.ReactNode }> = {
-    alpha: { title: "Tratamiento de transparencias", summary: alphaSummary, icon: <ScanSearch size={15} /> },
-    residue: { title: "Limpieza de residuos", summary: residueSummary, icon: <Trash2 size={15} /> },
-    polish: { title: "Pulido de borde", summary: polishSummary, icon: <WandSparkles size={15} /> },
+    alpha: { title: "Tratamiento de transparencias", summary: batch ? (batch.config.alphaEnabled ? `Incluido · umbral ${batch.config.alpha.thresholdPercent}%` : "Excluido del lote") : alphaSummary, icon: <ScanSearch size={15} /> },
+    residue: { title: "Limpieza de residuos", summary: batch ? (batch.config.residueEnabled ? "Incluida en el lote" : "Excluida del lote") : residueSummary, icon: <Trash2 size={15} /> },
+    polish: { title: "Pulido de borde", summary: batch ? (batch.config.polishEnabled ? "Incluido en el lote" : "Excluido del lote") : polishSummary, icon: <WandSparkles size={15} /> },
   };
 
   return (
     <div className="inspector-content transparency-inspector">
       <div className={`inspector-zone-stack${zoneDrag ? " is-reordering" : ""}`}>
+        {batch && <BatchSetupPanel batch={batch} onClose={onExitBatch ?? (() => undefined)} />}
         {zoneDrag && <div className="zone-drag-ghost" style={{ left: zoneDrag.x + 10, top: zoneDrag.y + 10 }}>{zoneMeta[zoneDrag.source].title}</div>}
         {zoneLayout.order.map((zoneId) => <InspectorZone
           key={zoneId}
@@ -335,8 +337,19 @@ function TransparencyInspector() {
           onDragStart={startZoneDrag}
           onDragMove={moveZoneDrag}
           onDragEnd={finishZoneDrag}
+          batchEnabled={batch ? zoneId === "alpha" ? batch.config.alphaEnabled : zoneId === "residue" ? batch.config.residueEnabled : batch.config.polishEnabled : undefined}
+          batchRunning={batch?.running}
+          onBatchEnabledChange={batch ? (enabled) => batch.setConfig(zoneId === "alpha"
+            ? { ...batch.config, alphaEnabled: enabled }
+            : zoneId === "residue"
+              ? { ...batch.config, residueEnabled: enabled }
+              : { ...batch.config, polishEnabled: enabled }) : undefined}
         >
-          {zoneId === "alpha" ? <>
+          {batch ? zoneId === "alpha" ? <BatchAlphaOptions batch={batch} /> : zoneId === "residue" ? <ResidueCleanup
+            protectedRegionIds={[]}
+            onUnprotectCurrent={() => undefined}
+            batch={{ enabled: batch.config.residueEnabled, running: batch.running, options: batch.config.residue, onChange: (options) => batch.setConfig({ ...batch.config, residue: options }) }}
+          /> : <EdgePolish batch={{ enabled: batch.config.polishEnabled, running: batch.running, options: batch.config.polish, onChange: (options) => batch.setConfig({ ...batch.config, polish: options }) }} /> : zoneId === "alpha" ? <>
       <FlowStatus flow={flow} />
 
       <section>
@@ -459,6 +472,41 @@ function TransparencyInspector() {
       </div>
     </div>
   );
+}
+
+function BatchAlphaOptions({ batch }: { batch: BatchController }) {
+  const alpha = batch.config.alpha;
+  const disabled = batch.running || !batch.config.alphaEnabled;
+  const updateAlpha = (patch: Partial<typeof alpha>) => batch.setConfig({ ...batch.config, alpha: { ...alpha, ...patch } });
+  const updateProtection = (key: keyof typeof alpha.protections, value: boolean) => updateAlpha({ protections: { ...alpha.protections, [key]: value } });
+  return <fieldset className="batch-stage-fields" disabled={disabled}>
+    <section>
+      <div className="section-title"><span>UMBRAL COMÚN PARA EL LOTE</span><ScanSearch size={14} /></div>
+      <label className="field-label">Umbral de transparencia: {alpha.thresholdPercent}%
+        <input type="range" min="1" max="99" value={alpha.thresholdPercent} onChange={(event) => updateAlpha({ thresholdPercent: Number(event.target.value) })} />
+      </label>
+      <label className="numeric-threshold">Porcentaje editable<input type="number" min="1" max="99" value={alpha.thresholdPercent} onChange={(event) => updateAlpha({ thresholdPercent: Math.max(1, Math.min(99, Number(event.target.value))) })} /></label>
+      <small className="microcopy">Se adapta automáticamente a imágenes alfa de 8 y 16 bits.</small>
+    </section>
+    <section>
+      <div className="section-title"><span>PROTECCIÓN DE DETALLES</span><ShieldCheck size={14} /></div>
+      <Check label="Proteger textura conectada" checked={alpha.protections.protectConnectedTexture} onChange={(value) => updateProtection("protectConnectedTexture", value)} />
+      <Check label="Proteger líneas finas" checked={alpha.protections.protectFineLines} onChange={(value) => updateProtection("protectFineLines", value)} />
+      <Check label="Proteger grunge" checked={alpha.protections.protectGrunge} onChange={(value) => updateProtection("protectGrunge", value)} />
+      <Check label="Eliminar solamente partículas aisladas" checked={alpha.protections.onlyIsolatedParticles} onChange={(value) => updateProtection("onlyIsolatedParticles", value)} />
+    </section>
+    <section>
+      <div className="section-title"><span>RECONSTRUCCIÓN DE BORDES</span><ChevronRight size={14} /></div>
+      <div className="segmented reconstruction-modes">
+        <button className={alpha.reconstructionMode === "automatic" ? "active" : ""} onClick={() => updateAlpha({ reconstructionMode: "automatic" })}>Automático</button>
+        <button className={alpha.reconstructionMode === "manual" ? "active" : ""} onClick={() => updateAlpha({ reconstructionMode: "manual" })}>Manual</button>
+      </div>
+      {alpha.reconstructionMode === "automatic"
+        ? <p className="microcopy">El radio se adapta a cada imagen del lote.</p>
+        : <label className="field-label">Radio manual: {alpha.reconstructRadius} px<input type="range" min="1" max="16" value={alpha.reconstructRadius} onChange={(event) => updateAlpha({ reconstructRadius: Number(event.target.value) })} /></label>}
+    </section>
+    {!batch.config.alphaEnabled && <p className="batch-stage-off">Esta etapa está excluida del procesamiento automático.</p>}
+  </fieldset>;
 }
 
 function FlowStatus({ flow }: { flow: string }) {

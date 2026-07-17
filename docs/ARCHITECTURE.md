@@ -1,5 +1,7 @@
 # DTF Pro Studio — arquitectura maestra
 
+> **Documento de visión histórica.** Incluye componentes futuros y no debe interpretarse como inventario implementado de 0.4.2. La arquitectura auditada está en [06-ARQUITECTURA.md](06-ARQUITECTURA.md).
+
 ## Principios innegociables
 
 - Aplicación de escritorio Windows construida con Tauri 2, React y TypeScript.

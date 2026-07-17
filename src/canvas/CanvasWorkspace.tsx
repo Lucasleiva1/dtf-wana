@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
+// Installs PixiJS' CSP-safe shader/uniform generators before creating a renderer.
+// Tauri intentionally disallows `unsafe-eval` in production.
+import "pixi.js/unsafe-eval";
+import { Application, Container, Sprite, Texture } from "pixi.js";
 import { ImageMinus, ImagePlus, MousePointer2 } from "lucide-react";
 import { useStudioStore } from "../stores/studioStore";
 import { editResidueMask, refreshResiduePreview } from "../lib/residueService";
@@ -9,7 +12,6 @@ type ResidueGesture = { tool: "residue-rectangle" | "residue-lasso" | "residue-b
 type PixiWorkspace = {
   app: Application;
   world: Container;
-  artboard: Graphics;
   baseSprite?: Sprite;
   overlayTiles: Map<string, Sprite>;
 };
@@ -57,7 +59,6 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
     let initialized = false;
     const app = new Application();
     const world = new Container();
-    const artboard = new Graphics();
     setRendererError(null);
     void app.init({
       resizeTo: host,
@@ -75,9 +76,7 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
         host.appendChild(app.canvas);
         app.stage.addChild(world);
         world.sortableChildren = true;
-        artboard.zIndex = 10;
-        world.addChild(artboard);
-        pixiRef.current = { app, world, artboard, overlayTiles: new Map() };
+        pixiRef.current = { app, world, overlayTiles: new Map() };
         const gl = (app.renderer as unknown as { gl?: WebGL2RenderingContext }).gl;
         const debugInfo = gl?.getExtension("WEBGL_debug_renderer_info") as { UNMASKED_RENDERER_WEBGL: number } | null;
         const gpuName = gl && debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)) : "WebGL acelerado";
@@ -122,11 +121,8 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
           pixi.baseSprite.destroy({ texture: true, textureSource: true });
           pixi.baseSprite = undefined;
         }
-        pixi.artboard.clear();
         return;
       }
-      pixi.artboard.clear();
-      pixi.artboard.rect(0, 0, document.width, document.height).stroke({ color: 0x8f8a83, width: 1 });
       const bitmap = await createImageBitmap(document.renderBlob);
       if (cancelled || !pixiRef.current || pixiRef.current !== pixi) {
         bitmap.close();

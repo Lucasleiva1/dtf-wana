@@ -5,6 +5,7 @@ import { changePixelHistory } from "../lib/historyService";
 import { runEdgePolishApplyJob, runEdgePolishPreviewJob } from "../lib/jobService";
 import { useStudioStore } from "../stores/studioStore";
 import type { EdgePolishImpact, EdgePolishMethod, EdgePolishOptions } from "../types/alpha";
+import type { BatchConfiguration } from "../types/batch";
 
 const number = new Intl.NumberFormat("es-AR");
 
@@ -16,7 +17,19 @@ const initialOptions: EdgePolishOptions = {
   protectConnectedTexture: true,
 };
 
-export function EdgePolish() {
+type BatchPolishMode = {
+  enabled: boolean;
+  running: boolean;
+  options: BatchConfiguration["polish"];
+  onChange: (options: BatchConfiguration["polish"]) => void;
+};
+
+export function EdgePolish({ batch }: { batch?: BatchPolishMode }) {
+  if (batch) return <BatchPolishOptions batch={batch} />;
+  return <ManualEdgePolish />;
+}
+
+function ManualEdgePolish() {
   const document = useStudioStore((state) => state.document);
   const analysis = useStudioStore((state) => state.alphaAnalysis);
   const activeJob = useStudioStore((state) => state.activeJob);
@@ -173,6 +186,36 @@ export function EdgePolish() {
       <small className="microcopy">La previsualización no modifica el documento. Aplicar crea una entrada completa en el historial.</small>
     </section>
   </>;
+}
+
+function BatchPolishOptions({ batch }: { batch: BatchPolishMode }) {
+  const options = batch.options;
+  const setOption = <K extends keyof EdgePolishOptions>(key: K, value: EdgePolishOptions[K]) => batch.onChange({ ...options, [key]: value });
+  return <fieldset className="batch-stage-fields" disabled={batch.running || !batch.enabled}>
+    <section>
+      <div className="section-title"><span>INTENSIDAD</span><WandSparkles size={14} /></div>
+      <div className="segmented polish-intensity">
+        {(["soft", "medium", "strong"] as const).map((value) => <button key={value} className={options.intensity === value ? "active" : ""} onClick={() => setOption("intensity", value)}>{intensityLabel(value)}</button>)}
+      </div>
+      <label className="field-label">Radio: {options.radius} px
+        <input type="range" min="1" max="3" step="1" value={options.radius} onChange={(event) => setOption("radius", Number(event.target.value) as 1 | 2 | 3)} />
+      </label>
+    </section>
+    <section>
+      <div className="section-title"><span>MÉTODO BINARIO</span><WandSparkles size={14} /></div>
+      <label className="field-label">Método
+        <select value={options.method} onChange={(event) => setOption("method", event.target.value as EdgePolishMethod)}>
+          <option value="binary_smoothing">Suavizado binario</option>
+          <option value="majority_filter">Filtro de mayoría</option>
+          <option value="spike_rounding">Redondeo leve de picos</option>
+        </select>
+      </label>
+      <Check label="Proteger detalle fino" checked={options.protectFineDetail} onChange={(value) => setOption("protectFineDetail", value)} />
+      <Check label="Proteger textura conectada" checked={options.protectConnectedTexture} onChange={(value) => setOption("protectConnectedTexture", value)} />
+      <p className="polish-rule"><ShieldCheck size={13} /> Sin blur, feather ni alfa parcial. Sólo modifica la máscara 0/255.</p>
+      {!batch.enabled && <p className="batch-stage-off">Esta etapa está excluida del procesamiento automático.</p>}
+    </section>
+  </fieldset>;
 }
 
 function Unavailable({ text }: { text: string }) {

@@ -6,6 +6,7 @@ import { editResidueMask, refreshResiduePreview } from "../lib/residueService";
 import { useStudioStore } from "../stores/studioStore";
 import type { ToolId } from "../types/document";
 import type { MaskEdit, ResidueCleanupOptions } from "../types/residue";
+import type { BatchConfiguration } from "../types/batch";
 
 const number = new Intl.NumberFormat("es-AR");
 
@@ -21,7 +22,19 @@ const initialOptions: ResidueCleanupOptions = {
   protectedRegionIds: [],
 };
 
-export function ResidueCleanup({ protectedRegionIds, onUnprotectCurrent }: { protectedRegionIds: string[]; onUnprotectCurrent: () => void }) {
+type BatchResidueMode = {
+  enabled: boolean;
+  running: boolean;
+  options: BatchConfiguration["residue"];
+  onChange: (options: BatchConfiguration["residue"]) => void;
+};
+
+export function ResidueCleanup({ protectedRegionIds, onUnprotectCurrent, batch }: { protectedRegionIds: string[]; onUnprotectCurrent: () => void; batch?: BatchResidueMode }) {
+  if (batch) return <BatchResidueOptions batch={batch} />;
+  return <ManualResidueCleanup protectedRegionIds={protectedRegionIds} onUnprotectCurrent={onUnprotectCurrent} />;
+}
+
+function ManualResidueCleanup({ protectedRegionIds, onUnprotectCurrent }: { protectedRegionIds: string[]; onUnprotectCurrent: () => void }) {
   const document = useStudioStore((state) => state.document);
   const summary = useStudioStore((state) => state.residueMask);
   const activeTool = useStudioStore((state) => state.activeTool);
@@ -154,6 +167,30 @@ export function ResidueCleanup({ protectedRegionIds, onUnprotectCurrent }: { pro
     <button className="danger-action" disabled={!summary.hasSelection || busy} onClick={() => void apply()}><Eraser size={14} /> FORZAR TRANSPARENTE</button>
     <small className="microcopy">También puedes hacer clic derecho sobre el lienzo o presionar Supr. Sólo la selección pasa a alfa 0; el resto queda intacto.</small>
   </section>;
+}
+
+function BatchResidueOptions({ batch }: { batch: BatchResidueMode }) {
+  const options = batch.options;
+  const setOption = <K extends keyof typeof options>(key: K, value: (typeof options)[K]) => batch.onChange({ ...options, [key]: value });
+  return <fieldset className="batch-stage-fields" disabled={batch.running || !batch.enabled}>
+    <section className="residue-cleanup">
+      <div className="section-title"><span>LIMPIEZA AUTOMÁTICA DE RESIDUOS</span><Trash2 size={14} /></div>
+      <p className="microcopy">La misma detección se aplicará automáticamente a cada imagen y la selección encontrada pasará a alfa 0.</p>
+      <div className="residue-options">
+        <Check label="Partículas aisladas" checked={options.isolatedParticles} onChange={(value) => setOption("isolatedParticles", value)} />
+        <Check label="Fragmentos débiles conectados al borde" checked={options.weakEdgeFragments} onChange={(value) => setOption("weakEdgeFragments", value)} />
+        <Check label="Restos exteriores del contorno" checked={options.exteriorContourRemains} onChange={(value) => setOption("exteriorContourRemains", value)} />
+        <Check label="Incluir zonas protegidas seleccionadas" checked={options.includeProtectedSelected} onChange={(value) => setOption("includeProtectedSelected", value)} />
+      </div>
+      <div className="residue-parameters">
+        <NumberField label="Tamaño máximo de región" value={options.maxRegionSize} min={1} max={250000} onChange={(value) => setOption("maxRegionSize", value)} />
+        <NumberField label="Distancia máxima al diseño" value={options.maxDistance} min={0} max={2048} onChange={(value) => setOption("maxDistance", value)} />
+        <NumberField label="Grosor mínimo de conexión" value={options.minimumConnectionThickness} min={1} max={32} onChange={(value) => setOption("minimumConnectionThickness", value)} />
+        <label className="field-label">Sensibilidad del contorno: {options.contourSensitivity}<input type="range" min="1" max="100" value={options.contourSensitivity} onChange={(event) => setOption("contourSensitivity", Number(event.target.value))} /></label>
+      </div>
+      {!batch.enabled && <p className="batch-stage-off">Esta etapa está excluida del procesamiento automático.</p>}
+    </section>
+  </fieldset>;
 }
 
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {

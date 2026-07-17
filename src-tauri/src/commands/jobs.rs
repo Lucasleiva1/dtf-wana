@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering;
+use std::{path::{Path, PathBuf}, sync::atomic::Ordering};
 
 use serde::Serialize;
 use tauri::{ipc::Response, State};
@@ -7,6 +7,7 @@ use crate::{
     alpha_engine::AlphaTreatment,
     application::{jobs::JobSnapshot, revisions, state::AppState},
     edge_polish_engine::EdgePolishOptions,
+    image_engine::document::ExportFormat,
     residue_engine::ResidueCleanupOptions,
 };
 
@@ -448,17 +449,27 @@ pub fn start_export_job(
     path: String,
     expected_revision: u64,
     dpi: u32,
+    format: Option<ExportFormat>,
+    avoid_overwrite: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<StartedJob, String> {
     let state = state.inner().clone();
+    let format = format.unwrap_or_default();
+    let requested_path = PathBuf::from(path);
+    let output_path = if avoid_overwrite.unwrap_or(false) {
+        available_output_path(&requested_path)
+    } else {
+        requested_path
+    };
     let document = state.get(&document_id)?;
     let memory = document
         .lock()
         .map_err(|_| "No se pudo leer el documento".to_string())?
         .operation_memory_bytes();
+    let job_name = format!("Exportar y verificar {}", format.label());
     let job_id = state
         .jobs
-        .create("export_document", "Exportar y verificar PNG", 7, memory)?;
+        .create("export_document", &job_name, 7, memory)?;
     let worker_job_id = job_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let result = (|| {
@@ -472,8 +483,9 @@ pub fn start_export_job(
                     conflict.code, conflict.current_revision
                 )
             })?;
-            let result = document.export_verified_with_progress(
-                std::path::Path::new(&path),
+            let result = document.export_verified_as_with_progress(
+                &output_path,
+                format,
                 true,
                 dpi.clamp(1, 2400),
                 &mut |stage, label, processed, total| {
@@ -502,6 +514,26 @@ pub fn start_export_job(
     Ok(StartedJob { job_id })
 }
 
+fn available_output_path(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or("imagen_dtf");
+    let extension = path.extension().and_then(|value| value.to_str());
+    for index in 2..=10_000 {
+        let name = match extension {
+            Some(extension) => format!("{stem}_{index}.{extension}"),
+            None => format!("{stem}_{index}"),
+        };
+        let candidate = parent.join(name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    parent.join(format!("{stem}_{}", std::process::id()))
+}
+
 #[tauri::command]
 pub fn get_job_status(job_id: String, state: State<'_, AppState>) -> Result<JobSnapshot, String> {
     state.jobs.snapshot(&job_id)
@@ -515,4 +547,20 @@ pub fn cancel_job(job_id: String, state: State<'_, AppState>) -> Result<(), Stri
 #[tauri::command]
 pub fn get_job_binary(job_id: String, state: State<'_, AppState>) -> Result<Response, String> {
     Ok(Response::new(state.jobs.binary_result(&job_id)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn batch_output_never_overwrites_an_existing_file() {
+        let directory = std::env::temp_dir().join(format!("dtf-batch-path-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let requested = directory.join("imagen_dtf.png");
+        std::fs::write(&requested, b"existing").unwrap();
+        let available = available_output_path(&requested);
+        assert_eq!(available.file_name().unwrap(), "imagen_dtf_2.png");
+        let _ = std::fs::remove_dir_all(directory);
+    }
 }

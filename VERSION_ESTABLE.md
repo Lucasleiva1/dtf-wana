@@ -1,5 +1,7 @@
 # Registro de versión estable
 
+> **Punto de restauración histórico.** Este archivo registra el release estable 0.3.1; no define la versión actual del código, que es 0.4.2. Consultar `CHANGELOG.md` y los tres manifiestos de versión antes de publicar.
+
 ## Último punto de restauración
 
 - Versión: `0.3.1`
