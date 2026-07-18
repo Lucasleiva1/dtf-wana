@@ -8,7 +8,7 @@ import { useStudioStore } from "../../../stores/studioStore";
 import {
   cleanupBackgroundMask, deleteBackgroundSelection, generateUnknownBand, initializeBackgroundRemoval,
   modifyBackgroundSelection, redoBackgroundMask, refineBackgroundEdge,
-  selectBackgroundFromBorders, undoBackgroundMask, exportBackgroundResult,
+  removeBackgroundWithAi, selectBackgroundFromBorders, undoBackgroundMask, exportBackgroundResult,
 } from "../commands/backgroundRemovalService";
 import { useBackgroundRemovalStore } from "../state/backgroundRemovalStore";
 import type { BackgroundView, SelectionAction, SelectionMode } from "../types";
@@ -22,9 +22,11 @@ export function BackgroundRemovalInspector() {
   const updatePlacedImage = useStudioStore((state) => state.updatePlacedImage);
   const setActiveJob = useStudioStore((state) => state.setActiveJob);
   const activeTool = useStudioStore((state) => state.activeTool);
+  const renderDevice = useStudioStore((state) => state.renderDevice);
   const store = useBackgroundRemovalStore();
   const selected = Boolean(document?.placedImage && selectedItemId === document.placedImage.id);
   const hasBackgroundResult = store.summary.selectedPixels > 0
+    || store.summary.aiMaskActive
     || store.summary.userSubtractedPixels > 0
     || store.summary.backgroundLockedPixels > 0
     || store.summary.unknownPixels > 0;
@@ -99,9 +101,12 @@ export function BackgroundRemovalInspector() {
     <BackgroundSection title="MÉTODO" icon={<Sparkles size={13} />}>
       <button className="background-primary" disabled={Boolean(store.busy)} onClick={() => void run(() => selectBackgroundFromBorders(document), "Fondo detectado desde los cuatro bordes. Revisá la selección antes de exportar.")}><ScanSearch size={14} /> Detectar desde bordes</button>
       <div className={`background-model-status ${store.model?.ready ? "ready" : "pending"}`}>
-        <Bot size={15} /><div><b>BiRefNet Lite · CPU</b><span>{store.model?.reason ?? "Comprobando modelo local…"}</span></div>
+        <Bot size={15} /><div><b>BiRefNet Lite · {store.model?.provider ?? "comprobando"}</b><span>{store.model?.reason ?? "Comprobando modelo local…"}</span></div>
       </div>
-      <button className="background-secondary" disabled={!store.model?.ready}><Bot size={14} /> Quitar con IA local</button>
+      <button className="background-secondary" disabled={!store.model?.ready || Boolean(store.busy)} onClick={() => void run(async () => {
+        const result = await removeBackgroundWithAi(document, renderDevice);
+        setNotification({ kind: "success", text: `Fondo quitado con BiRefNet Lite usando ${result.provider}.` });
+      })}><Bot size={14} /> Quitar con IA local</button>
     </BackgroundSection>
 
     <BackgroundSection title="SELECCIÓN" icon={<WandSparkles size={13} />}>
@@ -144,9 +149,9 @@ export function BackgroundRemovalInspector() {
         <span className="background"><i />Fondo seguro <b>{number.format(store.summary.backgroundLockedPixels)}</b></span>
         <span className="never"><LockKeyhole size={11} />Nunca borrar <b>{number.format(store.summary.neverRemovePixels)}</b></span>
       </div>
-      <label className="background-range">Tamaño de pincel <b>{store.brushSize} px</b><input type="range" min="1" max="250" value={store.brushSize} onChange={(event) => store.setBrushSize(Number(event.target.value))} /></label>
+      <label className="background-range">Tamaño de pincel <b>{store.brushSize} px</b><input type="range" min="1" max="500" value={store.brushSize} onChange={(event) => store.setBrushSize(Number(event.target.value))} /></label>
       <label className="background-range">Opacidad <b>{Math.round(store.brushOpacity * 100)}%</b><input type="range" min="5" max="100" value={store.brushOpacity * 100} onChange={(event) => store.setBrushOpacity(Number(event.target.value) / 100)} /></label>
-      <small className="background-help"><Brush size={12} />Usá Proteger, Marcar fondo o Nunca borrar desde la barra izquierda. Alt borra temporalmente el tipo de marca activo.</small>
+      <small className="background-help"><Brush size={12} />Usá Proteger, Marcar fondo o Nunca borrar desde la barra izquierda. Alt + arrastre horizontal cambia el tamaño; Alt + clic borra una marca.</small>
     </BackgroundSection>
 
     <BackgroundSection title="BORDE" icon={<Focus size={13} />}>

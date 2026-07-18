@@ -8,6 +8,7 @@ use super::{
     },
 };
 use crate::image_engine::document::PixelBuffer;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 struct MaskPixel {
@@ -28,9 +29,13 @@ struct MaskChange {
     after: MaskPixel,
 }
 
-#[derive(Clone, Default)]
-struct MaskHistoryEntry {
-    changes: Vec<MaskChange>,
+#[derive(Clone)]
+enum MaskHistoryEntry {
+    Sparse(Vec<MaskChange>),
+    Ai {
+        before: Option<Arc<Vec<u16>>>,
+        after: Option<Arc<Vec<u16>>>,
+    },
 }
 
 #[derive(Clone)]
@@ -43,6 +48,7 @@ pub struct BackgroundRemovalState {
     user_add: Vec<u8>,
     user_subtract: Vec<u8>,
     refined_alpha: Vec<u16>,
+    ai_alpha: Option<Arc<Vec<u16>>>,
     mask_revision: u64,
     history: Vec<MaskHistoryEntry>,
     future: Vec<MaskHistoryEntry>,
@@ -59,6 +65,7 @@ impl BackgroundRemovalState {
             user_add: vec![0; pixel_count],
             user_subtract: vec![0; pixel_count],
             refined_alpha: vec![u16::MAX; pixel_count],
+            ai_alpha: None,
             mask_revision: 0,
             history: Vec::new(),
             future: Vec::new(),
@@ -73,14 +80,15 @@ impl BackgroundRemovalState {
 
     pub fn summary(&self) -> BackgroundRemovalSummary {
         let count = |mask: &[u8]| mask.iter().filter(|value| **value != 0).count() as u64;
-        let partial_alpha_pixels = self
-            .unknown_band
-            .iter()
-            .zip(&self.refined_alpha)
-            .filter(|(unknown, alpha)| **unknown != 0 && **alpha > 0 && **alpha < u16::MAX)
+        let partial_alpha_pixels = (0..self.selection.len())
+            .filter(|index| {
+                let alpha = self.mask_alpha_without_source(*index);
+                alpha > 0 && alpha < u16::MAX
+            })
             .count() as u64;
         BackgroundRemovalSummary {
             mask_revision: self.mask_revision,
+            ai_mask_active: self.ai_alpha.is_some(),
             selected_pixels: count(&self.selection),
             foreground_locked_pixels: count(&self.foreground_lock),
             background_locked_pixels: count(&self.background_lock),
@@ -443,14 +451,56 @@ impl BackgroundRemovalState {
         self.apply_selection(&candidate, SelectionMode::New)
     }
 
+    pub fn apply_ai_alpha(&mut self, alpha: Vec<u16>) -> Result<BackgroundRemovalUpdate, String> {
+        if alpha.len() != self.selection.len() {
+            return Err(format!(
+                "La máscara de IA tiene {} píxeles y el documento {}",
+                alpha.len(),
+                self.selection.len()
+            ));
+        }
+        let before = self.ai_alpha.clone();
+        let after = Arc::new(alpha);
+        let changed = after
+            .iter()
+            .enumerate()
+            .filter(|(index, value)| {
+                before
+                    .as_ref()
+                    .map(|mask| mask[*index])
+                    .unwrap_or(u16::MAX)
+                    != **value
+            })
+            .count() as u64;
+        if changed > 0 {
+            self.ai_alpha = Some(after.clone());
+            self.history.push(MaskHistoryEntry::Ai { before, after: Some(after) });
+            self.future.clear();
+            if self.history.len() > 40 {
+                self.history.remove(0);
+            }
+            self.mask_revision = self.mask_revision.saturating_add(1);
+        }
+        Ok(self.update(changed, 0))
+    }
+
     pub fn undo(&mut self) -> BackgroundRemovalUpdate {
         let Some(entry) = self.history.pop() else {
             return self.update(0, 0);
         };
-        let changed = entry.changes.len() as u64;
-        for change in &entry.changes {
-            self.set_pixel(change.index, change.before);
-        }
+        let changed = match &entry {
+            MaskHistoryEntry::Sparse(changes) => {
+                for change in changes {
+                    self.set_pixel(change.index, change.before);
+                }
+                changes.len() as u64
+            }
+            MaskHistoryEntry::Ai { before, after } => {
+                let changed = alpha_difference(before.as_deref(), after.as_deref(), self.selection.len());
+                self.ai_alpha = before.clone();
+                changed
+            }
+        };
         self.future.push(entry);
         self.mask_revision = self.mask_revision.saturating_add(1);
         BackgroundRemovalUpdate {
@@ -464,10 +514,19 @@ impl BackgroundRemovalState {
         let Some(entry) = self.future.pop() else {
             return self.update(0, 0);
         };
-        let changed = entry.changes.len() as u64;
-        for change in &entry.changes {
-            self.set_pixel(change.index, change.after);
-        }
+        let changed = match &entry {
+            MaskHistoryEntry::Sparse(changes) => {
+                for change in changes {
+                    self.set_pixel(change.index, change.after);
+                }
+                changes.len() as u64
+            }
+            MaskHistoryEntry::Ai { before, after } => {
+                let changed = alpha_difference(before.as_deref(), after.as_deref(), self.selection.len());
+                self.ai_alpha = after.clone();
+                changed
+            }
+        };
         self.history.push(entry);
         self.mask_revision = self.mask_revision.saturating_add(1);
         BackgroundRemovalUpdate {
@@ -568,20 +627,13 @@ impl BackgroundRemovalState {
     }
 
     pub fn final_alpha_u16(&self, index: usize, source_alpha: u16, mode: OutputAlphaMode) -> u16 {
+        let mask_alpha = self.mask_alpha_without_source(index);
         let natural = if self.never_remove[index] != 0 || self.foreground_lock[index] != 0 {
-            u16::MAX
-        } else if self.background_lock[index] != 0 {
-            0
+            source_alpha.max(mask_alpha)
         } else if self.user_add[index] != 0 {
-            source_alpha.max(self.refined_alpha[index])
-        } else if self.user_subtract[index] != 0 {
-            0
-        } else if self.unknown_band[index] != 0 {
-            ((source_alpha as u32 * self.refined_alpha[index] as u32) / u16::MAX as u32) as u16
-        } else if self.selection[index] != 0 {
-            0
+            source_alpha.max(mask_alpha)
         } else {
-            source_alpha
+            ((source_alpha as u32 * mask_alpha as u32) / u16::MAX as u32) as u16
         };
         match mode {
             OutputAlphaMode::Natural => natural,
@@ -592,6 +644,26 @@ impl BackgroundRemovalState {
                     0
                 }
             }
+        }
+    }
+
+    fn mask_alpha_without_source(&self, index: usize) -> u16 {
+        if self.never_remove[index] != 0 || self.foreground_lock[index] != 0 {
+            u16::MAX
+        } else if self.background_lock[index] != 0 {
+            0
+        } else if self.user_add[index] != 0 {
+            self.refined_alpha[index]
+        } else if self.user_subtract[index] != 0 {
+            0
+        } else if self.unknown_band[index] != 0 {
+            self.refined_alpha[index]
+        } else if self.selection[index] != 0 {
+            0
+        } else if let Some(ai_alpha) = &self.ai_alpha {
+            ai_alpha[index]
+        } else {
+            u16::MAX
         }
     }
 
@@ -619,7 +691,7 @@ impl BackgroundRemovalState {
         }
         let changed = changes.len() as u64;
         if !changes.is_empty() {
-            self.history.push(MaskHistoryEntry { changes });
+            self.history.push(MaskHistoryEntry::Sparse(changes));
             self.future.clear();
             if self.history.len() > 40 {
                 self.history.remove(0);
@@ -660,6 +732,15 @@ impl BackgroundRemovalState {
         self.user_subtract[index] = pixel.user_subtract;
         self.refined_alpha[index] = pixel.refined_alpha;
     }
+}
+
+fn alpha_difference(before: Option<&Vec<u16>>, after: Option<&Vec<u16>>, len: usize) -> u64 {
+    (0..len)
+        .filter(|index| {
+            before.map(|mask| mask[*index]).unwrap_or(u16::MAX)
+                != after.map(|mask| mask[*index]).unwrap_or(u16::MAX)
+        })
+        .count() as u64
 }
 
 fn average_lab(labs: &[Lab], include: impl Fn(usize) -> bool) -> Option<Lab> {
@@ -807,5 +888,31 @@ mod tests {
         assert_eq!(state.user_subtract[1], 0);
         assert_eq!(state.user_subtract[2], 0);
         assert!(update.truncated_by_protection >= 1);
+    }
+
+    #[test]
+    fn ai_alpha_is_non_destructive_and_undoable_without_sparse_pixel_history() {
+        let mut state = BackgroundRemovalState::new(3);
+        let update = state
+            .apply_ai_alpha(vec![0, u16::MAX / 2, u16::MAX])
+            .expect("máscara IA");
+        assert!(update.summary.ai_mask_active);
+        assert_eq!(update.summary.partial_alpha_pixels, 1);
+        assert_eq!(
+            state.final_alpha_u16(0, u16::MAX, OutputAlphaMode::Natural),
+            0
+        );
+        assert_eq!(
+            state.final_alpha_u16(1, u16::MAX, OutputAlphaMode::Natural),
+            u16::MAX / 2
+        );
+        state.undo();
+        assert!(!state.summary().ai_mask_active);
+        assert_eq!(
+            state.final_alpha_u16(0, u16::MAX, OutputAlphaMode::Natural),
+            u16::MAX
+        );
+        state.redo();
+        assert!(state.summary().ai_mask_active);
     }
 }

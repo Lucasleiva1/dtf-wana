@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "DTF Pro Studio",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "identifier": "com.dtfwana.prostudio",
   "build": {
-    "beforeDevCommand": "corepack pnpm dev",
+    "beforeDevCommand": "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 1420 --strictPort",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "corepack pnpm build",
+    "beforeBuildCommand": "node node_modules/typescript/bin/tsc -b --pretty false && node node_modules/vite/bin/vite.js build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -30,7 +30,14 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "../models/background-removal/birefnet-lite.onnx": "models/background-removal/birefnet-lite.onnx",
+      "../models/background-removal/model.json": "models/background-removal/model.json",
+      "../models/background-removal/runtime/onnxruntime.dll": "models/background-removal/runtime/onnxruntime.dll",
+      "../models/background-removal/runtime/onnxruntime_providers_shared.dll": "models/background-removal/runtime/onnxruntime_providers_shared.dll",
+      "../models/background-removal/runtime/DirectML.dll": "models/background-removal/runtime/DirectML.dll"
+    }
   },
   "plugins": {
     "updater": {

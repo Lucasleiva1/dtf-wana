@@ -7,10 +7,13 @@ use tauri::{ipc::Response, Manager, State};
 
 use crate::{
     application::{revisions, state::AppState},
+    background_removal::inference::{
+        run_birefnet, runtime_is_complete, MODEL_SHA256, MODEL_SIZE_BYTES,
+    },
     background_removal::types::{
-        BackgroundEraserRequest, BackgroundRemovalSummary, BackgroundRemovalUpdate, BackgroundView,
-        BoundarySegment, CleanupSettings, MagicWandRequest, ModelStatus, OutputAlphaMode,
-        RefineSettings, SelectionAction, StrokeRequest, WandSettings,
+        AiRemovalResult, BackgroundEraserRequest, BackgroundRemovalSummary, BackgroundRemovalUpdate,
+        BackgroundView, BoundarySegment, CleanupSettings, InferenceDevice, MagicWandRequest,
+        ModelStatus, OutputAlphaMode, RefineSettings, SelectionAction, StrokeRequest, WandSettings,
     },
     commands::jobs::StartedJob,
 };
@@ -22,6 +25,42 @@ fn verify_revision(expected: u64, current: u64) -> Result<(), String> {
             conflict.code, conflict.current_revision
         )
     })
+}
+
+#[tauri::command]
+pub async fn background_ai_remove(
+    app: tauri::AppHandle,
+    document_id: String,
+    device: InferenceDevice,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> Result<AiRemovalResult, String> {
+    let model_path = background_model_path(&app)
+        .ok_or_else(|| "BiRefNet Lite no está instalado o está incompleto".to_string())?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let document = state.get(&document_id)?;
+        let (pixels, width, height) = {
+            let document = document
+                .lock()
+                .map_err(|_| "No se pudo bloquear el documento".to_string())?;
+            verify_revision(expected_revision, document.revision)?;
+            (document.working.clone(), document.width, document.height)
+        };
+        let inference = run_birefnet(&pixels, width, height, &model_path, device)?;
+        let mut document = document
+            .lock()
+            .map_err(|_| "No se pudo bloquear el documento".to_string())?;
+        verify_revision(expected_revision, document.revision)?;
+        let update = document.background_removal.apply_ai_alpha(inference.alpha)?;
+        Ok(AiRemovalResult {
+            update,
+            provider: inference.provider,
+            inference_ms: inference.elapsed_ms,
+        })
+    })
+    .await
+    .map_err(|error| format!("Falló la tarea de BiRefNet Lite: {error}"))?
 }
 
 #[tauri::command]
@@ -402,6 +441,26 @@ fn available_output_path(path: &Path) -> PathBuf {
 
 #[tauri::command]
 pub fn background_model_status(app: tauri::AppHandle) -> ModelStatus {
+    let installed_path = background_model_path(&app);
+    let installed = installed_path.is_some();
+    ModelStatus {
+        installed,
+        ready: installed,
+        model_id: "birefnet-lite".into(),
+        provider: "GPU DirectML / CPU".into(),
+        path: installed_path.map(|path| path.to_string_lossy().to_string()),
+        reason: if installed {
+            format!(
+                "Instalado y listo · 1024 px · firma {}",
+                &MODEL_SHA256[..12]
+            )
+        } else {
+            "BiRefNet Lite no está instalado o el archivo está incompleto.".into()
+        },
+    }
+}
+
+fn background_model_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let resource_candidate = app
         .path()
         .resource_dir()
@@ -410,23 +469,16 @@ pub fn background_model_status(app: tauri::AppHandle) -> ModelStatus {
     let development_candidate = std::env::current_dir()
         .ok()
         .map(|path| path.join("models/background-removal/birefnet-lite.onnx"));
-    let installed_path: Option<PathBuf> = resource_candidate
+    resource_candidate
         .into_iter()
         .chain(development_candidate)
-        .find(|path| path.is_file());
-    let installed = installed_path.is_some();
-    ModelStatus {
-        installed,
-        ready: false,
-        model_id: "birefnet-lite".into(),
-        provider: "CPU".into(),
-        path: installed_path.map(|path| path.to_string_lossy().to_string()),
-        reason: if installed {
-            "El archivo existe, pero ONNX Runtime todavía no fue habilitado para esta compilación."
-                .into()
-        } else {
-            "BiRefNet Lite no está instalado. DTF Pro Studio no descarga modelos silenciosamente."
-                .into()
-        },
-    }
+        .find(|path| {
+            path.metadata()
+                .map(|metadata| {
+                    metadata.is_file()
+                        && metadata.len() == MODEL_SIZE_BYTES
+                        && runtime_is_complete(path)
+                })
+                .unwrap_or(false)
+        })
 }

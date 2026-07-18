@@ -1,13 +1,13 @@
 # Registro de versión estable
 
-> **Punto de partida vigente.** Este archivo registra la base 0.4.2 de Transparencias. Consultar `CHANGELOG.md` y los tres manifiestos de versión antes de publicar un instalador.
+> **Punto de restauración vigente.** Este archivo registra la versión 0.4.5 preparada para publicación. Consultar `CHANGELOG.md` y los manifiestos antes de publicar un instalador posterior.
 
 ## Último punto de restauración
 
-- Versión: `0.4.2`
-- Etiqueta Git: `app-v0.4.2`
-- Nombre: **Base consolidada de Transparencias**
-- Fecha local: **2026-07-17**
+- Versión: `0.4.5`
+- Etiqueta Git: `app-v0.4.5`
+- Nombre: **IA local y herramientas contextuales**
+- Fecha local: **2026-07-18**
 - Rama: `main`
 - Repositorio: `Lucasleiva1/dtf-wana`
 - Estado: **punto de partida del código guardado en GitHub**
@@ -16,7 +16,7 @@ Para volver exactamente a este guardado:
 
 ```powershell
 git fetch --tags origin
-git switch --detach app-v0.4.2
+git switch --detach app-v0.4.5
 ```
 
 ## Contenido principal
@@ -29,6 +29,11 @@ git switch --detach app-v0.4.2
 - Lienzo persistente con procesamiento optimizado y aceleración GPU.
 - Reemplazo, arrastre y eliminación de imágenes sin borrar el archivo original.
 - Interfaz responsive desde 560 × 480.
+- Quitar fondo con BiRefNet Lite local, DirectML y retorno automático a CPU.
+- Máscara no destructiva con selección acumulativa, protecciones y borrado repetido.
+- Barra contextual tipo Photoshop/Illustrator para Varita y Pincel.
+- Tamaño de pincel mediante `Alt + arrastre horizontal` y controles duplicados en el inspector.
+- Acceso directo de desarrollo reproducible mediante scripts versionados.
 
 ## Assets requeridos
 

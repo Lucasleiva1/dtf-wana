@@ -11,3 +11,7 @@ package-lock.json
 .DS_Store
 Thumbs.db
 .release-assets/
+.pnpm-store/
+models/background-removal/*.onnx
+models/background-removal/*.part
+models/background-removal/runtime/*.dll

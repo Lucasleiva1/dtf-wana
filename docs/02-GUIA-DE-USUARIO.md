@@ -76,10 +76,15 @@ GPU es la opción predeterminada y recomendada para que el zoom, el desplazamien
 ## Quitar fondo con selección
 
 1. Seleccione la imagen y abra **Quitar fondo**.
-2. Use **Detectar desde bordes** o la **Varita mágica (W)**. La selección aparece como un borde blanco y negro fino en movimiento; el overlay de color es opcional.
-3. Pulse **Borrar fondo seleccionado**, Supr o Retroceso. La zona pasa a transparencia de forma no destructiva y la selección se limpia.
-4. Vuelva a usar la varita dentro de letras, huecos o regiones separadas y repita el borrado todas las veces necesarias.
-5. Ctrl+D quita únicamente la selección activa. Ctrl+Z y Ctrl+Y deshacen o rehacen cada modificación de máscara.
+2. Para un recorte automático, pulse **Quitar con IA local**. La aplicación usa GPU o CPU según Ajustes e informa el motor que realmente completó el trabajo. Si DirectML no tiene memoria suficiente, continúa sola por CPU.
+3. Para un recorte manual, use **Detectar desde bordes** o la **Varita mágica (W)**. La selección aparece como un borde blanco y negro fino en movimiento; el overlay de color es opcional.
+4. Pulse **Borrar fondo seleccionado**, Supr o Retroceso. La zona pasa a transparencia de forma no destructiva y la selección se limpia.
+5. Vuelva a usar la varita dentro de letras, huecos o regiones separadas y repita el borrado todas las veces necesarias.
+6. Ctrl+D quita únicamente la selección activa. Ctrl+Z y Ctrl+Y deshacen o rehacen cada modificación de máscara.
+
+La franja superior funciona como barra de opciones contextual al estilo Photoshop/Illustrator. Con **Varita mágica** muestra modo de selección, tolerancia y Contiguo. Con una herramienta de **Pincel** muestra el tipo de marca, tamaño y opacidad; los mismos controles siguen disponibles en el inspector derecho.
+
+Con un pincel de Quitar fondo activo, mantenga `Alt` y arrastre horizontalmente sobre la imagen: hacia la derecha aumenta el diámetro y hacia la izquierda lo reduce. El círculo del cursor y el valor superior cambian en vivo. `Alt + clic` sin arrastrar conserva el borrado puntual de la marca activa. Los atajos `[` y `]` continúan reduciendo o aumentando el tamaño por pasos.
 
 El modo rápido de color es el predeterminado. **Precisión máxima (CIEDE2000)** está dentro de Opciones avanzadas y puede tardar más en imágenes de muchos millones de píxeles.
 

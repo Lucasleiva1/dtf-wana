@@ -6,9 +6,12 @@ import { useBackgroundRemovalStore } from "../state/backgroundRemovalStore";
 import { backgroundToolTarget, type BackgroundView, type MaskPoint, type SelectionMode } from "../types";
 import { buildMarchingAntPath } from "../selection/buildMarchingAntPath";
 import { previewMatte } from "./backgroundPreview";
+import { brushSizeFromHorizontalDrag } from "./brushSizing";
 import "../styles/selection.css";
 
-type Gesture = { pointerId: number; points: MaskPoint[] };
+type StrokeGesture = { kind: "stroke"; pointerId: number; points: MaskPoint[] };
+type ResizeGesture = { kind: "resize"; pointerId: number; point: MaskPoint; startClientX: number; startClientY: number; startSize: number; moved: boolean };
+type Gesture = StrokeGesture | ResizeGesture;
 
 export function BackgroundRemovalCanvasOverlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -105,7 +108,9 @@ export function BackgroundRemovalCanvasOverlay() {
         .catch((reason) => setNotification({ kind: "error", text: reason instanceof Error ? reason.message : String(reason) }));
       return;
     }
-    const started = { pointerId: event.pointerId, points: [point] };
+    const started: Gesture = drawingTarget && event.altKey
+      ? { kind: "resize", pointerId: event.pointerId, point, startClientX: event.clientX, startClientY: event.clientY, startSize: state.brushSize, moved: false }
+      : { kind: "stroke", pointerId: event.pointerId, points: [point] };
     gestureRef.current = started;
     setGesture(started);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -114,7 +119,19 @@ export function BackgroundRemovalCanvasOverlay() {
     const point = localPoint(event);
     setCursor(point);
     const current = gestureRef.current;
-    if (!current || current.pointerId !== event.pointerId || !point) return;
+    if (!current || current.pointerId !== event.pointerId) return;
+    if (current.kind === "resize") {
+      const deltaX = event.clientX - current.startClientX;
+      const moved = current.moved || Math.hypot(deltaX, event.clientY - current.startClientY) >= 3;
+      state.setBrushSize(brushSizeFromHorizontalDrag(current.startSize, deltaX, camera.zoom));
+      if (moved !== current.moved) {
+        const updated = { ...current, moved };
+        gestureRef.current = updated;
+        setGesture(updated);
+      }
+      return;
+    }
+    if (!point) return;
     const previous = current.points[current.points.length - 1];
     if (Math.hypot(point.x - previous.x, point.y - previous.y) < Math.max(0.5, state.brushSize / 8)) return;
     const updated = { ...current, points: [...current.points, point] };
@@ -126,6 +143,26 @@ export function BackgroundRemovalCanvasOverlay() {
     if (!current || current.pointerId !== event.pointerId || !drawingTarget) return;
     gestureRef.current = null;
     setGesture(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (current.kind === "resize") {
+      if (current.moved) return;
+      const operation = activeTool === "background-eraser"
+        ? applyBackgroundEraser(document, {
+          points: [current.point],
+          radius: Math.max(1, Math.round(state.brushSize / 2)),
+          opacity: state.brushOpacity,
+          ...state.eraser,
+        })
+        : applyBackgroundStroke(document, {
+          target: drawingTarget,
+          mode: "erase",
+          points: [current.point],
+          radius: Math.max(1, Math.round(state.brushSize / 2)),
+          opacity: state.brushOpacity,
+        });
+      void operation.catch((reason) => setNotification({ kind: "error", text: reason instanceof Error ? reason.message : String(reason) }));
+      return;
+    }
     const operation = activeTool === "background-eraser"
       ? applyBackgroundEraser(document, {
         points: current.points,
@@ -142,23 +179,29 @@ export function BackgroundRemovalCanvasOverlay() {
       });
     void operation.catch((reason) => setNotification({ kind: "error", text: reason instanceof Error ? reason.message : String(reason) }));
   };
+  const cancelGesture = (event: React.PointerEvent<SVGSVGElement>) => {
+    const current = gestureRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    gestureRef.current = null;
+    setGesture(null);
+  };
 
   return <>
     <canvas className={`background-result-canvas view-${state.view}`} ref={canvasRef} style={{ ...style, opacity: state.overlayVisible || resultView ? 1 : 0 }} />
     <svg
       ref={svgRef}
-      className={`background-interaction-overlay tool-${activeTool}${interactive ? " interactive" : ""}`}
+      className={`background-interaction-overlay tool-${activeTool}${interactive ? " interactive" : ""}${gesture?.kind === "resize" ? " resizing-brush" : ""}`}
       style={style}
       viewBox={`0 0 ${document.width} ${document.height}`}
       preserveAspectRatio="none"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={finishGesture}
-      onPointerCancel={finishGesture}
+      onPointerCancel={cancelGesture}
       onPointerLeave={() => { if (!gestureRef.current) setCursor(null); }}
     >
       {state.showMarchingAnts && state.summary.selectedPixels > 0 && <g className={`marching-ants${antsPaused ? " paused" : ""}`} aria-label="Contorno animado de selección"><path className="ants-contrast" d={contourPath} vectorEffect="non-scaling-stroke" /><path className="ants-light" d={contourPath} vectorEffect="non-scaling-stroke" /></g>}
-      {gesture && <polyline className="background-stroke-preview" points={gesture.points.map((point) => `${point.x},${point.y}`).join(" ")} style={{ strokeWidth: state.brushSize }} />}
+      {gesture?.kind === "stroke" && <polyline className="background-stroke-preview" points={gesture.points.map((point) => `${point.x},${point.y}`).join(" ")} style={{ strokeWidth: state.brushSize }} />}
       {cursor && drawingTarget && <circle className={`background-brush-cursor target-${drawingTarget}`} cx={cursor.x} cy={cursor.y} r={state.brushSize / 2} vectorEffect="non-scaling-stroke" />}
       {cursor && activeTool === "background-wand" && <g className="wand-cursor" transform={`translate(${cursor.x} ${cursor.y})`}><circle r={5} vectorEffect="non-scaling-stroke" /><path d="M-8 0H8M0-8V8" vectorEffect="non-scaling-stroke" /></g>}
     </svg>

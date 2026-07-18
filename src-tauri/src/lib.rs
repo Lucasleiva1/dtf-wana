@@ -28,6 +28,7 @@ pub fn run() {
             commands::background_removal::background_get_state,
             commands::background_removal::background_magic_wand,
             commands::background_removal::background_select_from_borders,
+            commands::background_removal::background_ai_remove,
             commands::background_removal::background_selection_action,
             commands::background_removal::background_apply_stroke,
             commands::background_removal::background_eraser_stroke,

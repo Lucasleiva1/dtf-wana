@@ -1,6 +1,6 @@
 # Integración MCP
 
-> **Diseño futuro, no implementación disponible.** A 0.4.2 no existen `dtf-pro-mcp.exe`, transportes MCP, recursos `dtf://` ni el directorio `src-tauri/src/mcp`. Para el estado comprobado consultar [APP_CONTEXT.md](ai/APP_CONTEXT.md) y [PROCESSING_CONTRACTS.md](ai/PROCESSING_CONTRACTS.md).
+> **Diseño futuro, no implementación disponible.** A 0.4.5 no existen `dtf-pro-mcp.exe`, transportes MCP, recursos `dtf://` ni el directorio `src-tauri/src/mcp`. Para el estado comprobado consultar [APP_CONTEXT.md](ai/APP_CONTEXT.md) y [PROCESSING_CONTRACTS.md](ai/PROCESSING_CONTRACTS.md).
 
 ## Objetivo
 

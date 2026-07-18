@@ -38,6 +38,10 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
 
+      - name: Instalar BiRefNet Lite y runtime local
+        shell: pwsh
+        run: .\scripts\install-birefnet-model.ps1
+
       - name: Compilar y publicar Release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -53,4 +57,3 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
-

@@ -1,6 +1,6 @@
 # Índice de documentación
 
-Estado: auditado contra DTF Pro Studio 0.4.2. Alcance actual: módulo Transparencias.
+Estado: auditado contra DTF Pro Studio 0.4.5. Alcance actual: Transparencias y Quitar fondo con IA local.
 
 ## Producto y usuario
 
@@ -43,4 +43,4 @@ Estado: auditado contra DTF Pro Studio 0.4.2. Alcance actual: módulo Transparen
 
 ## Documentos históricos
 
-Los archivos `ALPHA_PROCESSING.md`, `ARCHITECTURE.md`, `FILE_FORMAT_SUPPORT.md`, `MCP_INTEGRATION.md` y otros documentos anteriores se conservan. Cuando contradigan este índice auditado, prevalece la documentación versionada 0.4.2 y debe abrirse una tarea de conciliación.
+Los archivos `ALPHA_PROCESSING.md`, `ARCHITECTURE.md`, `FILE_FORMAT_SUPPORT.md`, `MCP_INTEGRATION.md` y otros documentos anteriores se conservan. Cuando contradigan este índice auditado, prevalece la documentación versionada 0.4.5 y debe abrirse una tarea de conciliación.

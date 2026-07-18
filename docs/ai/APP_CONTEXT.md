@@ -2,7 +2,7 @@
 
 ## Identidad y alcance
 
-Aplicación: DTF Pro Studio 0.4.2, escritorio Windows, React 19 + TypeScript + Tauri 2 + Rust. Esta versión documental cubre Transparencias: importación, alfa, residuos, pulido, lote y exportación.
+Aplicación: DTF Pro Studio 0.4.5, escritorio Windows, React 19 + TypeScript + Tauri 2 + Rust. Esta versión documental cubre Transparencias y Quitar fondo con IA local.
 
 ## Modelo mental
 
@@ -11,6 +11,8 @@ Una imagen abierta se convierte en `ImageDocument`: bytes originales, píxeles o
 La interfaz también modela una mesa física separada de la imagen: ancho/alto en píxeles, PPP, unidad preferida, fondo, elemento colocado y guías. El elemento conserva los PPP de origen y se coloca con sus centímetros reales (`source_px × artboard_ppi / source_ppi`), nunca encajado a la mesa. Quitar el elemento conserva la mesa y sus guías. La transformación visual X/Y/W/H/rotación no modifica los píxeles del motor. Un documento vacío no se carga en Rust hasta colocar una imagen. La imagen debe seleccionarse para transformarla o procesarla, puede salir de la mesa y conserva siempre su proporción. El movimiento se agrupa por cuadro de pantalla. Las reglas tienen cero central; las guías manuales se imantan a ese cero y las ayudas inteligentes son cortas y sólo aparecen durante la alineación. Ninguna ayuda se exporta.
 
 La mesa DTF usa 300 PPP. Si el origen informa otro valor, la interfaz avisa y exige una acción explícita para asignar 300 PPP sin remuestrear; se conservan los píxeles y cambian los centímetros. Si faltan metadatos PPP, no se presenta el tamaño físico como confirmado hasta que el usuario asigne la resolución.
+
+La franja superior es contextual, siguiendo el modelo de Photoshop/Illustrator: muestra transformaciones para la imagen seleccionada y cambia a opciones esenciales de Varita o Pincel cuando esas herramientas están activas en Quitar fondo. Los controles completos permanecen en el inspector. En pinceles, `Alt + arrastre horizontal` cambia el diámetro en función del zoom y `Alt + clic` conserva el borrado puntual de la marca.
 
 ## Renderizado GPU/CPU
 

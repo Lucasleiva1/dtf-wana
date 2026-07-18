@@ -1,6 +1,6 @@
 # Deploy y distribución
 
-La aplicación usa Tauri 2, genera instalador NSIS para Windows y artefactos del actualizador. `src-tauri/tauri.conf.json` define versión 0.4.2, ventana 1280 × 800 y mínimo 560 × 480.
+La aplicación usa Tauri 2, genera instalador NSIS para Windows y artefactos del actualizador. `src-tauri/tauri.conf.json` define versión 0.4.5, ventana 1280 × 800 y mínimo 560 × 480.
 
 ## Build local
 
@@ -15,6 +15,6 @@ pnpm tauri build
 
 ## Publicación
 
-`.github/workflows/release.yml` ejecuta un workflow manual en Windows, instala Node 22 y Rust estable, construye con `tauri-apps/tauri-action` y publica instalador y `latest.json`. Requiere secretos de firma del actualizador.
+El método preferido firma localmente con la clave privada conservada fuera del repositorio y publica sólo el instalador NSIS, su `.sig` y `latest.json`. `.github/workflows/release.yml` queda como alternativa manual en Windows mediante `tauri-apps/tauri-action`; requiere que los secretos del actualizador correspondan a la clave pública embebida.
 
-Consultar `RELEASING.md` para la operación completa. Antes de publicar, sincronizar las tres versiones y actualizar `CHANGELOG.md`. `VERSION_ESTABLE.md` está desactualizado respecto de 0.4.2.
+Consultar `RELEASING.md` para la operación completa. Antes de publicar, sincronizar las versiones, actualizar `CHANGELOG.md` y comprobar los tres assets del updater. `VERSION_ESTABLE.md` registra el último punto de restauración publicado.

@@ -186,6 +186,7 @@ impl Default for CleanupSettings {
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundRemovalSummary {
     pub mask_revision: u64,
+    pub ai_mask_active: bool,
     pub selected_pixels: u64,
     pub foreground_locked_pixels: u64,
     pub background_locked_pixels: u64,
@@ -224,4 +225,19 @@ pub struct ModelStatus {
     pub provider: String,
     pub path: Option<String>,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum InferenceDevice {
+    Gpu,
+    Cpu,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiRemovalResult {
+    pub update: BackgroundRemovalUpdate,
+    pub provider: String,
+    pub inference_ms: u128,
 }

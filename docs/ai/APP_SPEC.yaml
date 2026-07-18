@@ -2,7 +2,7 @@ schema_version: "1.0"
 documentation_scope: transparency_module
 application:
   name: "DTF Pro Studio"
-  version: "0.4.4"
+  version: "0.4.5"
   product_type: "windows_desktop"
   frontend: "React 19 + TypeScript + Vite"
   backend: "Tauri 2 + Rust"
@@ -71,6 +71,27 @@ document_workspace:
     visibility_persisted: true
     included_in_export: false
 background_removal:
+  contextual_options_bar:
+    reference: photoshop_illustrator
+    wand: [selection_mode, tolerance, contiguous]
+    brush: [active_mark_type, size, opacity]
+    duplicates_inspector_controls: true
+  brush_shortcuts:
+    resize: alt_primary_drag_horizontal
+    resize_right: grow
+    resize_left: shrink
+    alt_click_without_drag: erase_active_mark
+    bracket_step_resize: true
+  ai:
+    model: "onnx-community/BiRefNet_lite-ONNX"
+    model_revision: "de15b22ba131738a16dff04aab8bdf8dc32e3ac1"
+    input_size: [1024, 1024]
+    runtime: "Microsoft ONNX Runtime 1.24.4"
+    gpu_provider: "DirectML 1.15.4"
+    cpu_fallback: automatic
+    processing_location: local
+    mutates_source_or_original: false
+    mask_history: undoable_non_destructive
   selection_display: marching_ants_black_white_1px
   color_overlay_default: false
   clear_selection_shortcut: ctrl_d

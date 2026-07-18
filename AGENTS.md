@@ -2,7 +2,21 @@
 
 ## Alcance
 
-DTF Pro Studio 0.4.2 es una aplicación React 19 + TypeScript + Tauri 2. El alcance documentado actualmente es Transparencias: alfa, residuos, pulido, lote y exportación.
+DTF Pro Studio 0.4.5 es una aplicación React 19 + TypeScript + Tauri 2. El alcance documentado actualmente incluye Transparencias y Quitar fondo con IA local.
+
+## Entorno de desarrollo de un clic
+
+- Leer `DESARROLLO-UN-CLIC.md` antes de intentar abrir la aplicación.
+- El usuario inicia Vite + Tauri con el acceso directo **DTF Pro Studio - Desarrollo**.
+- Los agentes deben modificar, guardar y validar el proyecto, pero no abrir la GUI desde el escritorio aislado de Codex.
+- El lanzador versionado es `scripts/start-dev.ps1`; `scripts/install-dev-shortcut.ps1` recrea el `.lnk`.
+- La recarga de desarrollo usa `http://127.0.0.1:1420`.
+
+## Referencia de interacción
+
+- Photoshop e Illustrator son la referencia principal para herramientas, barras contextuales, cursores y atajos de edición.
+- Las opciones esenciales de la herramienta activa deben aparecer en la franja superior sin retirar sus controles completos del inspector.
+- Los gestos nuevos deben conservar las funciones existentes o documentar explícitamente el reemplazo.
 
 ## Leer antes de modificar
 

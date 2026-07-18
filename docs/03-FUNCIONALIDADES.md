@@ -8,7 +8,7 @@
 | Mesa y precisión | Artboard independiente, selección y escala proporcional con ocho tiradores, reglas de origen central, guías manuales e inteligentes | `src/canvas/CanvasWorkspace.tsx`, `src/canvas/PrecisionOverlay.tsx`, `src/components/CanvasControls.tsx` |
 | Propiedades | Zona contextual de imagen seleccionada y diálogo general de tamaño, color, contenido, guías y exportación | `src/components/Inspector.tsx`, `src/components/DocumentPropertiesDialog.tsx` |
 | Avisos | Mensajes centrados bajo el lienzo, cierre manual y descarte automático a los 10 segundos | `src/app/App.tsx`, `src/styles/global.css` |
-| Quitar fondo | Varita CIELAB, selección animada tipo Photoshop, borrado acumulativo no destructivo, Ctrl+D, protecciones, refinamiento y exportación verificada | `src/features/background-removal/`, `src-tauri/src/background_removal/` |
+| Quitar fondo | BiRefNet Lite local con ONNX Runtime/DirectML y retorno a CPU, varita CIELAB, selección animada tipo Photoshop, barra superior contextual para Varita/Pincel, tamaño por Alt + arrastre horizontal, borrado acumulativo no destructivo, Ctrl+D, protecciones, refinamiento y exportación verificada | `src/features/background-removal/`, `src-tauri/src/background_removal/` |
 | Análisis alfa | Histograma exacto, regiones de 8 vecinos, recomendación y verificación | `alpha_engine/mod.rs` |
 | Tratamiento | Umbral, hacer transparente/opaco, protecciones y reconstrucción | `alpha_engine/mod.rs` |
 | Residuos | Clasificación automática y máscara manual editable | `residue_engine/mod.rs`, `ResidueCleanup.tsx` |

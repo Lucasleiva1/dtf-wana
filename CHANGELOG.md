@@ -4,6 +4,23 @@ Este archivo registra cambios confirmados en el repositorio. Para publicar una v
 
 ## [Sin publicar]
 
+## [0.4.5] - 2026-07-18
+
+### Interfaz
+
+- Quitar fondo incorpora una barra superior contextual inspirada en Photoshop/Illustrator: la Varita muestra modo, tolerancia y continuidad; los pinceles muestran herramienta, tamaño y opacidad sin retirar los controles del inspector.
+- Con un pincel activo, `Alt + arrastre horizontal` modifica el diámetro en vivo —derecha agranda, izquierda reduce— respetando el zoom; `Alt + clic` conserva el borrado puntual de marcas.
+
+### Desarrollo
+
+- Se añadió un lanzador de doble clic para Windows que inicia Vite y la ventana nativa de Tauri sin reinstalar dependencias, evita sesiones duplicadas y mantiene visibles los errores de arranque.
+
+### Quitar fondo con IA local
+
+- BiRefNet Lite se ejecuta localmente mediante ONNX Runtime; la máscara de alfa se conserva como una edición no destructiva compatible con Deshacer/Rehacer y con los retoques manuales posteriores.
+- El botón **Quitar con IA local** usa la preferencia GPU/CPU de Ajustes. DirectML se intenta cuando está seleccionada GPU y, si el controlador no dispone de memoria suficiente, la misma operación continúa automáticamente por CPU sin cerrar la aplicación.
+- El modelo, ONNX Runtime y DirectML se verifican por SHA-256 y se incorporan como recursos de la aplicación. El flujo de publicación los descarga de fuentes oficiales antes de generar el instalador.
+
 ## [0.4.4] - 2026-07-18
 
 ### Interfaz

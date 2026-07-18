@@ -79,6 +79,7 @@ export type CleanupSettings = {
 
 export type BackgroundRemovalSummary = {
   maskRevision: number;
+  aiMaskActive: boolean;
   selectedPixels: number;
   foregroundLockedPixels: number;
   backgroundLockedPixels: number;
@@ -108,6 +109,14 @@ export type ModelStatus = {
   reason: string;
 };
 
+export type InferenceDevice = "gpu" | "cpu";
+
+export type AiRemovalResult = {
+  update: BackgroundRemovalUpdate;
+  provider: string;
+  inferenceMs: number;
+};
+
 export const backgroundToolTarget: Partial<Record<BackgroundRemovalTool, MaskTarget>> = {
   "background-protect": "foreground_lock",
   "background-mark": "background_lock",
@@ -120,6 +129,7 @@ export const backgroundToolTarget: Partial<Record<BackgroundRemovalTool, MaskTar
 
 export const emptyBackgroundSummary: BackgroundRemovalSummary = {
   maskRevision: 0,
+  aiMaskActive: false,
   selectedPixels: 0,
   foregroundLockedPixels: 0,
   backgroundLockedPixels: 0,

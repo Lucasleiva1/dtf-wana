@@ -5,9 +5,9 @@ import type { ExportVerification, JobSnapshot } from "../../../types/alpha";
 import { useStudioStore } from "../../../stores/studioStore";
 import { useBackgroundRemovalStore } from "../state/backgroundRemovalStore";
 import type {
-  BackgroundRemovalSummary, BackgroundRemovalUpdate, BackgroundView, BoundarySegment,
+  AiRemovalResult, BackgroundRemovalSummary, BackgroundRemovalUpdate, BackgroundView, BoundarySegment,
   BackgroundEraserRequest, CleanupSettings, MagicWandRequest, ModelStatus, OutputAlphaMode,
-  RefineSettings, SelectionAction, StrokeRequest,
+  RefineSettings, SelectionAction, StrokeRequest, InferenceDevice,
 } from "../types";
 
 async function synchronize(document: StudioDocument, update: BackgroundRemovalUpdate): Promise<BackgroundRemovalUpdate> {
@@ -69,6 +69,36 @@ export function selectBackgroundFromBorders(document: StudioDocument) {
       expectedRevision: document.revision,
     });
   }, document);
+}
+
+export async function removeBackgroundWithAi(document: StudioDocument, device: InferenceDevice) {
+  const store = useBackgroundRemovalStore.getState();
+  store.setBusy(device === "gpu" ? "BiRefNet Lite · preparando GPU" : "BiRefNet Lite · procesando en CPU");
+  store.setError(null);
+  try {
+    const result = await invoke<AiRemovalResult>("background_ai_remove", {
+      documentId: document.id,
+      device,
+      expectedRevision: document.revision,
+    });
+    await synchronize(document, result.update);
+    const latest = useBackgroundRemovalStore.getState();
+    latest.setView("result");
+    if (latest.model) {
+      latest.setModel({
+        ...latest.model,
+        provider: result.provider,
+        reason: `Listo · ${result.provider} · ${(result.inferenceMs / 1000).toFixed(1)} s`,
+      });
+    }
+    return result;
+  } catch (reason) {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    useBackgroundRemovalStore.getState().setError(message);
+    throw reason;
+  } finally {
+    useBackgroundRemovalStore.getState().setBusy(null);
+  }
 }
 
 export function applyBackgroundStroke(document: StudioDocument, request: StrokeRequest) {
