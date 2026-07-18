@@ -13,6 +13,24 @@ embebida en `tauri.conf.json`.
 
 Para una versión futura:
 
+La ruta preferida es preparar el número de versión y las notas, guardar los
+cambios en un commit limpio de `main` y ejecutar un solo comando:
+
+```powershell
+.\scripts\publish-stable-release.ps1 -ReleaseNotesFile .\release-notes.md
+```
+
+El script toma la versión de `package.json`, exige que coincida con Cargo,
+Tauri y `APP_SPEC.yaml`, reutiliza la clave privada instalada en AppData,
+valida el proyecto, firma el NSIS, crea `latest.json`, sube el commit y el tag,
+publica los tres assets y comprueba el endpoint del actualizador. También se
+pueden pasar notas breves con `-ReleaseNotes "texto"`.
+
+No volver a reconstruir manualmente esta secuencia salvo que el script informe
+un error concreto.
+
+Detalle de lo que automatiza:
+
 1. actualizar el mismo número de versión en `package.json`, `Cargo.toml` y
    `tauri.conf.json`;
 2. comprobar que la clave pública local coincide con `plugins.updater.pubkey`;

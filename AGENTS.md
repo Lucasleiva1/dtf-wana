@@ -56,3 +56,10 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 No hay script `lint`. Si cambian controles, valores, formatos, errores, pipeline, rutas o contratos, actualizar la sección correspondiente en `docs/`, `docs/ai/APP_SPEC.yaml`, tutoriales afectados y `CHANGELOG.md`. Los enlaces se resuelven desde el archivo Markdown que los contiene.
+
+## Publicación estable
+
+Cuando el usuario pida un guardado para actualizar la aplicación instalable,
+leer `RELEASING.md` y usar `scripts/publish-stable-release.ps1`. La clave y su
+contraseña ya existen fuera del repositorio en AppData; no buscarlas de nuevo,
+no imprimirlas y no reproducir manualmente el flujo si el script puede hacerlo.

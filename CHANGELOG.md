@@ -4,6 +4,11 @@ Este archivo registra cambios confirmados en el repositorio. Para publicar una v
 
 ## [Sin publicar]
 
+### Desarrollo
+
+- Se incorporó un comando único y documentado para validar, firmar, publicar y
+  verificar futuras versiones estables usando la clave local ya instalada.
+
 ## [0.4.5] - 2026-07-18
 
 ### Interfaz
