@@ -124,6 +124,7 @@ export type EdgePolishResult = {
 };
 
 export type PreviewMode = "original" | "result" | "partial_overlay" | "impact_overlay" | "edge_polish_preview" | "alpha";
+export type ExportFormat = "png" | "webp" | "tiff" | "bmp";
 
 export type JobStatus = "queued" | "running" | "completed" | "cancelled" | "failed";
 
@@ -161,6 +162,7 @@ export type TransparencyFlowState =
 
 export type ExportVerification = {
   path: string;
+  format: ExportFormat;
   width: number;
   height: number;
   bitDepth: 8 | 16;

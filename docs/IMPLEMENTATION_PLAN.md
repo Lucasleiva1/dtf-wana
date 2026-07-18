@@ -42,41 +42,13 @@ Cada etapa termina con tests verdes, documentación y commit. No se inicia la si
 
 **Salida:** sólo se informa éxito tras verificar archivo, tamaño, profundidad y alfa binario.
 
-## Etapa 4 — Quitar fondo manual
+## Alcance consolidado de la versión 0.4.2
 
-- Máscaras compartidas, pincel/borrador conservar/eliminar.
-- Varita CIELAB/Delta E, flood fill 4/8, tolerancia, contigüidad y protección de borde.
-- Partículas, agujeros, contracción/expansión, halos e historial.
+- Análisis y tratamiento de alfa de 8 y 16 bits.
+- Limpieza automática y manual de residuos.
+- Pulido de contorno sobre alfa binario.
+- Procesamiento secuencial por lote, conservando los errores en la cola.
+- Exportación sin sobrescritura, con reapertura y verificación.
+- Documentación operativa y contratos internos sincronizados con la implementación.
 
-**Salida:** fixtures de fondos/halos/pelo/líneas finas y exportación pasan.
-
-## Etapa 5 — Quitar fondo IA
-
-- BiRefNet Lite ONNX, CPU y DirectML si corresponde.
-- Preflight, progreso, cancelación y refinamiento clásico posterior.
-
-**Salida:** funciona desconectado tras descargar el modelo y nunca congela la UI.
-
-## Etapa 6 — Separar elementos
-
-- Worker Python empaquetable y SAM 2.1 Tiny primero.
-- Automatic Mask Generator, deduplicación, jerarquía, fondo probable y capas.
-- Transformaciones no destructivas y exportación individual.
-- Modelos Small/Base+/Large sólo después, con advertencias y límites.
-
-**Salida:** regiones independientes editables/exportables; memoria insuficiente y cancelación probadas.
-
-## Etapa 7 — Formatos avanzados y proyecto
-
-- PSD fusionado/una capa, diálogo de advertencia multicapa.
-- SVG rasterizado a tamaño/PPP elegidos.
-- `.dtfproject`, autoguardado y recuperación.
-
-## Etapa 8 — MCP, CI, updater e instalador
-
-- Adaptador MCP sobre el command bus existente: STDIO predeterminado y HTTP local opcional sólo en `127.0.0.1`.
-- Catálogo generado desde definiciones reales, recursos/prompts versionados, jobs, revisiones, idempotencia, auditoría y permisos.
-- Perfiles: lectura, asistencia supervisada predeterminada y control avanzado granular/revocable.
-- IPC autenticado por Named Pipe entre el proceso MCP y la app; ninguna herramienta genérica de shell o filesystem.
-- GitHub Actions, releases borrador, hashes, updater firmado.
-- NSIS sólo después de la revisión en ventana de desarrollo.
+Este documento termina en el alcance consolidado. Cualquier módulo adicional requiere una nueva decisión de producto, contratos propios y un plan separado.

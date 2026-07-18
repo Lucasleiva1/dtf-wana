@@ -1,6 +1,6 @@
 [package]
 name = "dtf-pro-studio"
-version = "0.3.1"
+version = "0.4.2"
 description = "Preparación profesional de imágenes para DTF"
 authors = ["DTF Pro Studio"]
 edition = "2021"

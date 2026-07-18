@@ -1,4 +1,4 @@
-import { ChevronDown, GripVertical } from "lucide-react";
+import { ChevronDown, GripVertical, Power } from "lucide-react";
 import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { DropPosition, InspectorZoneId } from "../lib/inspectorLayout";
 
@@ -15,11 +15,15 @@ interface InspectorZoneProps {
   onDragStart: (id: InspectorZoneId, x: number, y: number) => void;
   onDragMove: (x: number, y: number) => void;
   onDragEnd: (commit: boolean) => void;
+  batchEnabled?: boolean;
+  batchRunning?: boolean;
+  onBatchEnabledChange?: (enabled: boolean) => void;
 }
 
 export function InspectorZone({
   id, title, summary, icon, collapsed, dragging, dropPosition, children,
   onToggle, onDragStart, onDragMove, onDragEnd,
+  batchEnabled, batchRunning = false, onBatchEnabledChange,
 }: InspectorZoneProps) {
   const suppressClick = useRef(false);
 
@@ -73,6 +77,14 @@ export function InspectorZone({
         <span><b>{title}</b><small>{summary}</small></span>
       </button>
       <div className="zone-order-controls">
+        {onBatchEnabledChange && <button
+          className={`zone-batch-toggle${batchEnabled ? " enabled" : ""}`}
+          disabled={batchRunning}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => { event.stopPropagation(); onBatchEnabledChange(!batchEnabled); }}
+          title={batchEnabled ? `${title}: incluido en el lote` : `${title}: excluido del lote`}
+          aria-label={batchEnabled ? `Excluir ${title} del lote` : `Incluir ${title} en el lote`}
+        ><Power size={11} />{batchEnabled ? "SÍ" : "NO"}</button>}
         <button className="zone-collapse" onPointerUp={toggle} title={collapsed ? "Desplegar" : "Plegar"} aria-label={`${collapsed ? "Desplegar" : "Plegar"} ${title}`}><ChevronDown size={16} /></button>
       </div>
     </header>

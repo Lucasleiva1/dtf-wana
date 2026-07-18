@@ -1,0 +1,161 @@
+schema_version: "1.0"
+documentation_scope: transparency_module
+application:
+  name: "DTF Pro Studio"
+  version: "0.4.2"
+  product_type: "windows_desktop"
+  frontend: "React 19 + TypeScript + Vite"
+  backend: "Tauri 2 + Rust"
+  processing_location: "local"
+automation:
+  mcp_server_available: false
+  tauri_ipc_available: true
+  internal_command_protocol: 1
+  internal_commands:
+    - system.capabilities
+    - alpha.analyze
+    - alpha.apply_treatment
+    - document.undo
+    - document.redo
+    - export.document
+inputs:
+  supported_extensions:
+    - png
+    - jpg
+    - jpeg
+    - webp
+    - tif
+    - tiff
+    - bmp
+  normalized_pixel_buffers:
+    - rgba8
+    - rgba16
+  path_file_limit_bytes: 536870912
+  batch_max_images: 25000
+alpha:
+  transparent_values:
+    rgba8: 0
+    rgba16: 0
+  opaque_values:
+    rgba8: 255
+    rgba16: 65535
+  partial_definition: "alpha > 0 and alpha < opaque_value"
+  analysis_schema_version: "1.0"
+  ui_default:
+    threshold_rgba8: 128
+    reconstruct_radius: 2
+    reconstruction_mode: automatic
+    protections:
+      protect_connected_texture: true
+      protect_fine_lines: true
+      protect_grunge: true
+      only_isolated_particles: false
+  treatment_actions:
+    - make_transparent
+    - make_opaque
+    - threshold
+residue:
+  ui_default:
+    isolated_particles: true
+    weak_edge_fragments: true
+    exterior_contour_remains: true
+    include_protected_selected: false
+    max_region_size: 900
+    max_distance: 48
+    minimum_connection_thickness: 2
+    contour_sensitivity: 55
+  manual_tools:
+    - component
+    - rectangle
+    - lasso
+    - brush
+    - clear
+    - select_all
+    - invert
+    - undo
+    - redo
+polish:
+  precondition: "verifiedSolidAlpha == true"
+  ui_default:
+    intensity: soft
+    radius: 1
+    method: binary_smoothing
+    protect_fine_detail: true
+    protect_connected_texture: true
+  intensities:
+    - soft
+    - medium
+    - strong
+  methods:
+    - binary_smoothing
+    - majority_filter
+    - spike_rounding
+batch:
+  recursive_scan: true
+  execution: sequential
+  success_queue_behavior: remove
+  error_queue_behavior: retain
+  pause_available: false
+  cancellation_available: true
+  default:
+    alpha_enabled: true
+    residue_enabled: false
+    polish_enabled: false
+    threshold_percent: 50
+    format: png
+    dpi: 300
+    output_folder: source_parent
+  output_name_pattern: "<source-base>_dtf.<extension>"
+  avoid_overwrite: true
+  selected_output_folder_preserves_subfolders: false
+exports:
+  individual_ui_formats:
+    - png
+  batch_formats:
+    - png
+    - webp
+    - tiff
+    - bmp
+  preserves_16_bit:
+    - png
+    - tiff
+  forces_8_bit:
+    - webp
+    - bmp
+  dpi_range:
+    min: 1
+    max: 2400
+  dpi_metadata_explicitly_written_for:
+    - png
+  verification:
+    reopen: true
+    dimensions: true
+    bit_depth: true
+    solid_alpha_when_required: true
+state:
+  optimistic_concurrency_field: expectedRevision
+  mutable_buffer: working
+  immutable_sources:
+    - source_bytes
+    - original
+  batch_persistence: false
+errors:
+  - DOCUMENT_REVISION_CONFLICT
+  - ALPHA_ZERO_VERIFICATION_FAILED
+  - RESIDUE_MASK_EMPTY
+  - EDGE_POLISH_REQUIRES_BINARY_ALPHA
+  - EDGE_POLISH_REQUIRES_TECHNICAL_VERIFICATION
+  - EDGE_POLISH_BINARY_VERIFICATION_FAILED
+  - EXPORT_BLOCKED_PARTIAL_ALPHA
+  - EXPORT_DIMENSIONS_MISMATCH
+  - EXPORT_DEPTH_MISMATCH
+  - EXPORT_VERIFICATION_FAILED
+  - JOB_CANCELLED
+privacy:
+  image_upload_detected: false
+  local_filesystem_processing: true
+restrictions:
+  - "Do not claim MCP availability until an adapter exists."
+  - "Do not polish partial alpha."
+  - "Do not overwrite batch outputs."
+  - "Do not accept a completed job without inspecting its result."

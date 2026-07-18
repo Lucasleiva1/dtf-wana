@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AlphaAnalysis, AlphaTreatment, EdgePolishImpact, EdgePolishOptions, EdgePolishResult, ExportVerification, JobSnapshot, TreatmentImpact, TreatmentResult } from "../types/alpha";
+import type { AlphaAnalysis, AlphaTreatment, EdgePolishImpact, EdgePolishOptions, EdgePolishResult, ExportFormat, ExportVerification, JobSnapshot, TreatmentImpact, TreatmentResult } from "../types/alpha";
 import type { StudioDocument } from "../types/document";
 import type { MaskSummary, ResidueApplyResult, ResidueCleanupOptions } from "../types/residue";
 import { rgbaBytesToBitmap } from "./bitmapService";
@@ -142,13 +142,16 @@ export async function runExportJob(
   document: StudioDocument,
   path: string,
   onProgress: (job: JobSnapshot<ExportVerification>) => void,
+  options: { format?: ExportFormat; dpi?: number; avoidOverwrite?: boolean } = {},
 ): Promise<ExportVerification> {
   const job = await watchJob<ExportVerification>(
     invoke<StartedJob>("start_export_job", {
       documentId: document.id,
       path,
       expectedRevision: document.revision,
-      dpi: 300,
+      dpi: options.dpi ?? 300,
+      format: options.format,
+      avoidOverwrite: options.avoidOverwrite,
     }),
     onProgress,
   );

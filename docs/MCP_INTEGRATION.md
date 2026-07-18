@@ -1,5 +1,7 @@
 # Integración MCP
 
+> **Diseño futuro, no implementación disponible.** A 0.4.2 no existen `dtf-pro-mcp.exe`, transportes MCP, recursos `dtf://` ni el directorio `src-tauri/src/mcp`. Para el estado comprobado consultar [APP_CONTEXT.md](ai/APP_CONTEXT.md) y [PROCESSING_CONTRACTS.md](ai/PROCESSING_CONTRACTS.md).
+
 ## Objetivo
 
 DTF Pro Studio será operable por cualquier cliente compatible con Model Context Protocol sin automatización visual. La aplicación funciona completa sin IA y no incluye chat en la primera versión.
@@ -64,4 +66,3 @@ Las confirmaciones sensibles se muestran dentro de DTF Pro Studio con cliente, a
 - Manifests y JSON Schemas generados desde definiciones reales.
 - Guías de seguridad, operación, clientes, catálogo y versionado.
 - Pruebas de descubrimiento, permisos, revisión, concurrencia, jobs, seguridad, auditoría y clientes compatibles.
-

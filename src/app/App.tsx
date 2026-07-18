@@ -8,6 +8,7 @@ import { Inspector } from "../components/Inspector";
 import { StatusBar } from "../components/StatusBar";
 import { ToolRail } from "../components/ToolRail";
 import { TopBar } from "../components/TopBar";
+import { BatchQueueStrip, useBatchController } from "../components/BatchPanel";
 import { JobProgress } from "../components/Inspector";
 import { dispatchCommand, type SystemCapabilities } from "../lib/commandBus";
 import { changePixelHistory } from "../lib/historyService";
@@ -24,11 +25,14 @@ export function App() {
   const [dropActive, setDropActive] = useState(false);
   const [importingImage, setImportingImage] = useState(false);
   const [system, setSystem] = useState<SystemCapabilities | null>(null);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const batch = useBatchController();
   const setDocument = useStudioStore((state) => state.setDocument);
   const notification = useStudioStore((state) => state.notification);
   const setNotification = useStudioStore((state) => state.setNotification);
+  const setModule = useStudioStore((state) => state.setModule);
   const activeJob = useStudioStore((state) => state.activeJob);
-  const open = () => inputRef.current?.click();
+  const open = () => { if (!batchOpen) inputRef.current?.click(); };
 
   const cancelRunningJob = useCallback(async () => {
     const state = useStudioStore.getState();
@@ -40,7 +44,7 @@ export function App() {
   }, []);
 
   const installImage = useCallback(async (loader: () => Promise<Awaited<ReturnType<typeof importImageFile>>>) => {
-    if (importing.current) return;
+    if (importing.current || batchOpen) return;
     importing.current = true;
     setImportingImage(true);
     setError(null);
@@ -60,7 +64,7 @@ export function App() {
       setImportingImage(false);
       setDropActive(false);
     }
-  }, [cancelRunningJob, setDocument, setNotification]);
+  }, [batchOpen, cancelRunningJob, setDocument, setNotification]);
 
   const removeImage = useCallback(async () => {
     const current = useStudioStore.getState().document;
@@ -167,11 +171,22 @@ export function App() {
   };
 
   return (
-    <div className={`studio-shell${dropActive ? " file-drop-active" : ""}`} onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <div className={`studio-shell${dropActive ? " file-drop-active" : ""}${batchOpen ? " batch-open" : ""}${batch.running ? " batch-running" : ""}`} onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <input ref={inputRef} className="visually-hidden" type="file" accept=".png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,image/*" onChange={onFile} />
-      <TopBar onOpen={open} onRemove={() => void removeImage()} importingImage={importingImage} />
+      <TopBar onOpen={open} onRemove={() => void removeImage()} onBatch={() => {
+        if (batch.running) return;
+        setBatchOpen((current) => {
+          if (!current) setModule("transparency");
+          return !current;
+        });
+      }} importingImage={importingImage} batchMode={batchOpen} batchRunning={batch.running} />
       <CanvasControls />
-      <main className="workspace-layout"><ToolRail /><CanvasWorkspace onOpen={open} onRemove={() => void removeImage()} /><Inspector /></main>
+      <main className="workspace-layout">
+        <ToolRail />
+        <CanvasWorkspace onOpen={open} onRemove={() => void removeImage()} />
+        <Inspector batchMode={batchOpen} batch={batchOpen ? batch : undefined} onExitBatch={() => setBatchOpen(false)} />
+        {batchOpen && <BatchQueueStrip batch={batch} />}
+      </main>
       <StatusBar system={system} />
       {dropActive && <div className="file-drop-overlay"><FileImage size={38} /><b>Soltá la imagen para abrirla</b><span>Reemplazará la imagen actual sin borrar el archivo original</span></div>}
       {importingImage && <div className="image-import-indicator"><LoaderCircle className="spin" size={16} /> Preparando imagen…</div>}

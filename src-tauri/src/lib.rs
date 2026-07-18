@@ -18,6 +18,8 @@ pub fn run() {
             commands::document::get_document_preview,
             commands::document::close_document,
             commands::document::read_dropped_image,
+            commands::document::scan_image_folder,
+            commands::document::read_batch_thumbnail,
             commands::residue::edit_residue_mask,
             commands::residue::get_residue_mask_tile,
             commands::residue::get_residue_mask_bytes,

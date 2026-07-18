@@ -1,7 +1,7 @@
-use std::{path::Path, sync::Arc};
+use std::{io::Cursor, path::Path, sync::Arc};
 
-use image::{ColorType, DynamicImage};
-use serde::Serialize;
+use image::{ColorType, DynamicImage, ImageBuffer, ImageFormat, Rgba, RgbaImage};
+use serde::{Deserialize, Serialize};
 
 use crate::alpha_engine::{self, AlphaAnalysis, AlphaTreatment, ProgressCallback, TreatmentImpact};
 #[cfg(test)]
@@ -109,6 +109,7 @@ pub struct EdgePolishResult {
 #[serde(rename_all = "camelCase")]
 pub struct ExportVerification {
     pub path: String,
+    pub format: ExportFormat,
     pub width: u32,
     pub height: u32,
     pub bit_depth: u8,
@@ -117,6 +118,40 @@ pub struct ExportVerification {
     pub partial_alpha_pixels: u64,
     pub verified_solid_alpha: bool,
     pub reopened_and_verified: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ExportFormat {
+    #[default]
+    Png,
+    Webp,
+    Tiff,
+    Bmp,
+}
+
+impl ExportFormat {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Png => "PNG",
+            Self::Webp => "WebP sin pérdida",
+            Self::Tiff => "TIFF",
+            Self::Bmp => "BMP",
+        }
+    }
+
+    fn image_format(self) -> Option<ImageFormat> {
+        match self {
+            Self::Png => None,
+            Self::Webp => Some(ImageFormat::WebP),
+            Self::Tiff => Some(ImageFormat::Tiff),
+            Self::Bmp => Some(ImageFormat::Bmp),
+        }
+    }
+
+    fn preserves_sixteen_bit(self) -> bool {
+        matches!(self, Self::Png | Self::Tiff)
+    }
 }
 
 impl ImageDocument {
@@ -584,6 +619,23 @@ impl ImageDocument {
         dpi: u32,
         progress: &mut ProgressCallback<'_>,
     ) -> Result<ExportVerification, String> {
+        self.export_verified_as_with_progress(
+            path,
+            ExportFormat::Png,
+            require_solid_alpha,
+            dpi,
+            progress,
+        )
+    }
+
+    pub fn export_verified_as_with_progress(
+        &self,
+        path: &Path,
+        format: ExportFormat,
+        require_solid_alpha: bool,
+        dpi: u32,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<ExportVerification, String> {
         progress(1, "Validando alfa", 0, 1)?;
         let before = alpha_engine::analyze(
             &self.id,
@@ -599,12 +651,13 @@ impl ImageDocument {
             ));
         }
         progress(1, "Validando alfa", 1, 1)?;
-        progress(2, "Codificando PNG", 0, 1)?;
-        let encoded = self.encode_png(dpi)?;
-        progress(2, "Codificando PNG", 1, 1)?;
+        let encoding_stage = format!("Codificando {}", format.label());
+        progress(2, &encoding_stage, 0, 1)?;
+        let encoded = self.encode_export(format, dpi)?;
+        progress(2, &encoding_stage, 1, 1)?;
         progress(3, "Escribiendo archivo", 0, encoded.len() as u64)?;
         std::fs::write(path, &encoded)
-            .map_err(|error| format!("No se pudo guardar el PNG: {error}"))?;
+            .map_err(|error| format!("No se pudo guardar {}: {error}", format.label()))?;
         if let Err(error) = progress(
             3,
             "Escribiendo archivo",
@@ -617,11 +670,11 @@ impl ImageDocument {
         let verification_result = (|| {
             progress(4, "Reabriendo exportación", 0, 1)?;
             let reopened = std::fs::read(path)
-                .map_err(|error| format!("No se pudo reabrir el PNG exportado: {error}"))?;
+                .map_err(|error| format!("No se pudo reabrir el archivo exportado: {error}"))?;
             progress(4, "Reabriendo exportación", 1, 1)?;
             progress(5, "Decodificando exportación", 0, reopened.len() as u64)?;
             let (mut verification_document, imported) =
-                ImageDocument::decode("export_verification".into(), "export.png".into(), reopened)?;
+                ImageDocument::decode("export_verification".into(), "export_batch".into(), reopened)?;
             progress(
                 5,
                 "Decodificando exportación",
@@ -635,7 +688,12 @@ impl ImageDocument {
                     "EXPORT_DIMENSIONS_MISMATCH: las dimensiones cambiaron al exportar".into(),
                 );
             }
-            if imported.bit_depth != self.working.bit_depth() {
+            let expected_depth = if format.preserves_sixteen_bit() {
+                self.working.bit_depth()
+            } else {
+                8
+            };
+            if imported.bit_depth != expected_depth {
                 return Err("EXPORT_DEPTH_MISMATCH: la profundidad cambió al exportar".into());
             }
             if require_solid_alpha && !verification.verified_solid_alpha {
@@ -648,6 +706,7 @@ impl ImageDocument {
             progress(7, "Confirmando cero semitransparencias", 1, 1)?;
             Ok::<_, String>(ExportVerification {
                 path: path.to_string_lossy().into_owned(),
+                format,
                 width: imported.width,
                 height: imported.height,
                 bit_depth: imported.bit_depth,
@@ -662,6 +721,46 @@ impl ImageDocument {
             let _ = std::fs::remove_file(path);
         }
         verification_result
+    }
+
+    fn encode_export(&self, format: ExportFormat, dpi: u32) -> Result<Vec<u8>, String> {
+        if format == ExportFormat::Png {
+            return self.encode_png(dpi);
+        }
+        let force_eight_bit = !format.preserves_sixteen_bit();
+        let image = self.dynamic_working_image(force_eight_bit)?;
+        let mut cursor = Cursor::new(Vec::new());
+        image
+            .write_to(
+                &mut cursor,
+                format
+                    .image_format()
+                    .ok_or_else(|| "Formato de exportación no disponible".to_string())?,
+            )
+            .map_err(|error| format!("No se pudo codificar {}: {error}", format.label()))?;
+        Ok(cursor.into_inner())
+    }
+
+    fn dynamic_working_image(&self, force_eight_bit: bool) -> Result<DynamicImage, String> {
+        match &self.working {
+            PixelBuffer::Rgba8(pixels) => RgbaImage::from_raw(self.width, self.height, pixels.clone())
+                .map(DynamicImage::ImageRgba8)
+                .ok_or_else(|| "El búfer RGBA8 no coincide con las dimensiones".to_string()),
+            PixelBuffer::Rgba16(pixels) if !force_eight_bit => {
+                ImageBuffer::<Rgba<u16>, Vec<u16>>::from_raw(self.width, self.height, pixels.clone())
+                    .map(DynamicImage::ImageRgba16)
+                    .ok_or_else(|| "El búfer RGBA16 no coincide con las dimensiones".to_string())
+            }
+            PixelBuffer::Rgba16(pixels) => {
+                let converted = pixels
+                    .iter()
+                    .map(|value| ((u32::from(*value) + 128) / 257) as u8)
+                    .collect();
+                RgbaImage::from_raw(self.width, self.height, converted)
+                    .map(DynamicImage::ImageRgba8)
+                    .ok_or_else(|| "No se pudo convertir RGBA16 a RGBA8".to_string())
+            }
+        }
     }
 
     fn encode_png(&self, dpi: u32) -> Result<Vec<u8>, String> {
@@ -833,6 +932,99 @@ mod tests {
         assert_eq!(result.dpi, 300);
         assert_eq!(document.source_bytes.as_slice(), source.as_slice());
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn batch_formats_reopen_with_binary_alpha_and_original_dimensions() {
+        let (document, _) =
+            ImageDocument::decode("batch-formats".into(), "binary.png".into(), png8_binary_shape()).unwrap();
+        for (format, extension) in [
+            (ExportFormat::Png, "png"),
+            (ExportFormat::Webp, "webp"),
+            (ExportFormat::Tiff, "tif"),
+            (ExportFormat::Bmp, "bmp"),
+        ] {
+            let path = std::env::temp_dir().join(format!(
+                "dtf-pro-batch-{}-{}.{}",
+                std::process::id(),
+                format.label().replace(' ', "_"),
+                extension,
+            ));
+            let result = document
+                .export_verified_as_with_progress(&path, format, true, 300, &mut |_, _, _, _| Ok(()))
+                .unwrap_or_else(|error| panic!("falló {}: {error}", format.label()));
+            assert_eq!(result.width, document.width);
+            assert_eq!(result.height, document.height);
+            assert!(result.verified_solid_alpha);
+            assert_eq!(result.partial_alpha_pixels, 0);
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn batch_tiff_preserves_sixteen_bit_depth() {
+        let (mut document, _) =
+            ImageDocument::decode("batch-tiff16".into(), "source16.png".into(), png16_critical_alpha()).unwrap();
+        document.apply_treatment(&AlphaTreatment::Threshold {
+            threshold: 32768,
+            reconstruct_radius: 2,
+            reconstruction_mode: ReconstructionMode::Manual,
+            protections: ProtectionOptions::default(),
+        });
+        let path = std::env::temp_dir().join(format!("dtf-pro-batch-16-{}.tif", std::process::id()));
+        let result = document
+            .export_verified_as_with_progress(&path, ExportFormat::Tiff, true, 300, &mut |_, _, _, _| Ok(()))
+            .unwrap();
+        assert_eq!(result.bit_depth, 16);
+        assert!(result.verified_solid_alpha);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn sequential_batch_pipeline_processes_and_exports_multiple_documents() {
+        for (index, bytes) in [png8_all_alpha(), png8_binary_shape()].into_iter().enumerate() {
+            let (mut document, _) = ImageDocument::decode(
+                format!("batch-pipeline-{index}"),
+                format!("source-{index}.png"),
+                bytes,
+            ).unwrap();
+            let analysis = document.analyze();
+            if !analysis.verified_solid_alpha {
+                document.apply_treatment(&AlphaTreatment::Threshold {
+                    threshold: 128,
+                    reconstruct_radius: 2,
+                    reconstruction_mode: ReconstructionMode::Manual,
+                    protections: ProtectionOptions::default(),
+                });
+            }
+            let residue_options = ResidueCleanupOptions {
+                isolated_particles: true,
+                weak_edge_fragments: true,
+                exterior_contour_remains: true,
+                include_protected_selected: false,
+                max_region_size: 900,
+                max_distance: 48,
+                minimum_connection_thickness: 2,
+                contour_sensitivity: 55,
+                protected_region_ids: Vec::new(),
+            };
+            let summary = document
+                .classify_residues_with_progress(&residue_options, &mut |_, _, _, _| Ok(()))
+                .unwrap();
+            if summary.has_selection {
+                document.apply_residue_mask_with_progress(&mut |_, _, _, _| Ok(())).unwrap();
+            }
+            document
+                .apply_edge_polish_with_progress(&EdgePolishOptions::default(), &mut |_, _, _, _| Ok(()))
+                .unwrap();
+            let path = std::env::temp_dir().join(format!("dtf-pro-batch-pipeline-{}-{index}.webp", std::process::id()));
+            let exported = document
+                .export_verified_as_with_progress(&path, ExportFormat::Webp, true, 300, &mut |_, _, _, _| Ok(()))
+                .unwrap();
+            assert!(exported.reopened_and_verified);
+            assert_eq!(exported.partial_alpha_pixels, 0);
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     #[test]

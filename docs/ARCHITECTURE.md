@@ -1,5 +1,7 @@
 # DTF Pro Studio — arquitectura maestra
 
+> **Documento de visión histórica.** Incluye componentes futuros y no debe interpretarse como inventario implementado de 0.4.2. La arquitectura auditada está en [06-ARQUITECTURA.md](06-ARQUITECTURA.md).
+
 ## Principios innegociables
 
 - Aplicación de escritorio Windows construida con Tauri 2, React y TypeScript.
@@ -7,7 +9,7 @@
 - Documento, artboard, contenido, transformaciones y cámara son estados separados.
 - Las máscaras y operaciones son no destructivas y reversibles.
 - Ninguna imagen sale del equipo. La IA será local y opcional.
-- Los módulos se entregan por puertas de calidad: Base → Transparencias → exportación verificada → Quitar fondo → Separar elementos → MCP/actualizaciones.
+- El alcance consolidado se entrega por puertas de calidad: Base → Transparencias → residuos → pulido → lote → exportación verificada.
 
 ## Capas
 
