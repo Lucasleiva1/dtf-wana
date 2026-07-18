@@ -4,6 +4,7 @@ use image::{ColorType, DynamicImage, ImageBuffer, ImageFormat, Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
 
 use crate::alpha_engine::{self, AlphaAnalysis, AlphaTreatment, ProgressCallback, TreatmentImpact};
+use crate::background_removal::{types::OutputAlphaMode, BackgroundRemovalState};
 #[cfg(test)]
 use crate::alpha_engine::{ProtectionOptions, ReconstructionMode};
 use crate::edge_polish_engine::{self, EdgePolishImpact, EdgePolishOptions};
@@ -66,6 +67,7 @@ pub struct ImageDocument {
     pub history: Vec<HistoryEntry>,
     pub future: Vec<HistoryEntry>,
     pub residue_mask: ResidueMask,
+    pub background_removal: BackgroundRemovalState,
 }
 
 #[derive(Debug, Serialize)]
@@ -200,6 +202,7 @@ impl ImageDocument {
                 history: Vec::new(),
                 future: Vec::new(),
                 residue_mask: ResidueMask::new(width as usize * height as usize),
+                background_removal: BackgroundRemovalState::new(width as usize * height as usize),
             },
             imported,
         ))
@@ -636,13 +639,43 @@ impl ImageDocument {
         dpi: u32,
         progress: &mut ProgressCallback<'_>,
     ) -> Result<ExportVerification, String> {
+        self.export_buffer_verified_as_with_progress(path, format, require_solid_alpha, dpi, &self.working, progress)
+    }
+
+    pub fn export_background_verified_with_progress(
+        &self,
+        path: &Path,
+        output_alpha: OutputAlphaMode,
+        dpi: u32,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<ExportVerification, String> {
+        let candidate = self.background_removal.result_pixels(&self.working, output_alpha);
+        self.export_buffer_verified_as_with_progress(
+            path,
+            ExportFormat::Png,
+            output_alpha == OutputAlphaMode::SolidDtf,
+            dpi,
+            &candidate,
+            progress,
+        )
+    }
+
+    fn export_buffer_verified_as_with_progress(
+        &self,
+        path: &Path,
+        format: ExportFormat,
+        require_solid_alpha: bool,
+        dpi: u32,
+        pixels: &PixelBuffer,
+        progress: &mut ProgressCallback<'_>,
+    ) -> Result<ExportVerification, String> {
         progress(1, "Validando alfa", 0, 1)?;
         let before = alpha_engine::analyze(
             &self.id,
             self.revision,
             self.width,
             self.height,
-            &self.working,
+            pixels,
         );
         if require_solid_alpha && !before.verified_solid_alpha {
             return Err(format!(
@@ -653,7 +686,7 @@ impl ImageDocument {
         progress(1, "Validando alfa", 1, 1)?;
         let encoding_stage = format!("Codificando {}", format.label());
         progress(2, &encoding_stage, 0, 1)?;
-        let encoded = self.encode_export(format, dpi)?;
+        let encoded = self.encode_export(format, dpi, pixels)?;
         progress(2, &encoding_stage, 1, 1)?;
         progress(3, "Escribiendo archivo", 0, encoded.len() as u64)?;
         std::fs::write(path, &encoded)
@@ -689,7 +722,7 @@ impl ImageDocument {
                 );
             }
             let expected_depth = if format.preserves_sixteen_bit() {
-                self.working.bit_depth()
+                pixels.bit_depth()
             } else {
                 8
             };
@@ -723,12 +756,12 @@ impl ImageDocument {
         verification_result
     }
 
-    fn encode_export(&self, format: ExportFormat, dpi: u32) -> Result<Vec<u8>, String> {
+    fn encode_export(&self, format: ExportFormat, dpi: u32, pixels: &PixelBuffer) -> Result<Vec<u8>, String> {
         if format == ExportFormat::Png {
-            return self.encode_png(dpi);
+            return self.encode_png(dpi, pixels);
         }
         let force_eight_bit = !format.preserves_sixteen_bit();
-        let image = self.dynamic_working_image(force_eight_bit)?;
+        let image = self.dynamic_working_image(force_eight_bit, pixels)?;
         let mut cursor = Cursor::new(Vec::new());
         image
             .write_to(
@@ -741,8 +774,8 @@ impl ImageDocument {
         Ok(cursor.into_inner())
     }
 
-    fn dynamic_working_image(&self, force_eight_bit: bool) -> Result<DynamicImage, String> {
-        match &self.working {
+    fn dynamic_working_image(&self, force_eight_bit: bool, pixels: &PixelBuffer) -> Result<DynamicImage, String> {
+        match pixels {
             PixelBuffer::Rgba8(pixels) => RgbaImage::from_raw(self.width, self.height, pixels.clone())
                 .map(DynamicImage::ImageRgba8)
                 .ok_or_else(|| "El búfer RGBA8 no coincide con las dimensiones".to_string()),
@@ -763,12 +796,12 @@ impl ImageDocument {
         }
     }
 
-    fn encode_png(&self, dpi: u32) -> Result<Vec<u8>, String> {
+    fn encode_png(&self, dpi: u32, pixels: &PixelBuffer) -> Result<Vec<u8>, String> {
         let mut bytes = Vec::new();
         {
             let mut encoder = png::Encoder::new(&mut bytes, self.width, self.height);
             encoder.set_color(png::ColorType::Rgba);
-            encoder.set_depth(if self.working.bit_depth() == 16 {
+            encoder.set_depth(if pixels.bit_depth() == 16 {
                 png::BitDepth::Sixteen
             } else {
                 png::BitDepth::Eight
@@ -781,7 +814,7 @@ impl ImageDocument {
             }));
             encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
             let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
-            match &self.working {
+            match pixels {
                 PixelBuffer::Rgba8(pixels) => writer
                     .write_image_data(pixels)
                     .map_err(|error| error.to_string())?,
@@ -931,6 +964,32 @@ mod tests {
         assert_eq!(result.partial_alpha_pixels, 0);
         assert_eq!(result.dpi, 300);
         assert_eq!(document.source_bytes.as_slice(), source.as_slice());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn background_export_combines_mask_only_for_encoding_and_preserves_working_pixels() {
+        let bytes = png8_binary_shape();
+        let (mut document, _) = ImageDocument::decode("background-export".into(), "source.png".into(), bytes).unwrap();
+        let working_before = match &document.working { PixelBuffer::Rgba8(values) => values.clone(), _ => unreachable!() };
+        document.background_removal.selection_action(
+            crate::background_removal::types::SelectionAction::SelectAll,
+            1,
+            document.width,
+            document.height,
+        );
+        let path = std::env::temp_dir().join(format!("dtf-pro-background-export-{}.png", std::process::id()));
+        let result = document.export_background_verified_with_progress(
+            &path,
+            OutputAlphaMode::SolidDtf,
+            300,
+            &mut |_, _, _, _| Ok(()),
+        ).unwrap();
+        assert!(result.reopened_and_verified);
+        assert!(result.verified_solid_alpha);
+        assert_eq!(result.width, document.width);
+        assert_eq!(result.height, document.height);
+        match &document.working { PixelBuffer::Rgba8(values) => assert_eq!(values, &working_before), _ => unreachable!() };
         let _ = std::fs::remove_file(path);
     }
 

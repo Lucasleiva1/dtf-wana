@@ -138,7 +138,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   viewport: { width: 900, height: 600 },
   history: [],
   future: [],
-  setModule: (activeModule) => set({ activeModule }),
+  setModule: (activeModule) => set({ activeModule, activeTool: "select" }),
   setTool: (activeTool) => set({ activeTool }),
   setPreviewBackground: (previewBackground) => set({ previewBackground }),
   setCustomBackgroundColor: (customBackgroundColor) => set({ customBackgroundColor, previewBackground: "custom" }),

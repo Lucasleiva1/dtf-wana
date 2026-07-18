@@ -21,6 +21,8 @@ import { cancelJob } from "../lib/jobService";
 import { editResidueMask, refreshResiduePreview } from "../lib/residueService";
 import { createEmptyDocument } from "./createDocument";
 import { documentWithoutPlacedImage, placeImageOnExistingArtboard } from "./documentPlacement";
+import { deleteBackgroundSelection, modifyBackgroundSelection, redoBackgroundMask, undoBackgroundMask } from "../features/background-removal/commands/backgroundRemovalService";
+import { useBackgroundRemovalStore } from "../features/background-removal/state/backgroundRemovalStore";
 
 export function App() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -107,6 +109,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!notification) return;
+    const timeoutId = window.setTimeout(() => setNotification(null), 10_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [notification, setNotification]);
+
+  useEffect(() => {
     if (!isTauri()) return;
     let unlisten: (() => void) | undefined;
     void getCurrentWebview().onDragDropEvent((event) => {
@@ -130,6 +138,8 @@ export function App() {
       if (event.ctrlKey && event.key.toLowerCase() === "o") { event.preventDefault(); open(); }
       if (event.ctrlKey && event.key.toLowerCase() === "n") { event.preventDefault(); setNewDocumentOpen(true); }
       const state = useStudioStore.getState();
+      const backgroundState = useBackgroundRemovalStore.getState();
+      const backgroundLocked = Boolean(state.document?.placedImage?.maskLocked || state.document?.placedImage?.contentLocked);
       const editMaskHistory = async (action: "undo" | "redo") => {
         const latest = useStudioStore.getState();
         if (!latest.document) return;
@@ -138,22 +148,38 @@ export function App() {
       };
       if (event.ctrlKey && event.key.toLowerCase() === "z") {
         event.preventDefault();
-        if (state.transformPast.length) state.undoPlacedImageTransform(); else if (state.residueMask.canUndo) void editMaskHistory("undo"); else void changePixelHistory("undo");
+        if (state.activeModule === "background" && state.document) void undoBackgroundMask(state.document);
+        else if (state.transformPast.length) state.undoPlacedImageTransform(); else if (state.residueMask.canUndo) void editMaskHistory("undo"); else void changePixelHistory("undo");
+        return;
       }
       if (event.ctrlKey && event.key.toLowerCase() === "y") {
         event.preventDefault();
-        if (state.transformFuture.length) state.redoPlacedImageTransform(); else if (state.residueMask.canRedo) void editMaskHistory("redo"); else void changePixelHistory("redo");
+        if (state.activeModule === "background" && state.document) void redoBackgroundMask(state.document);
+        else if (state.transformFuture.length) state.redoPlacedImageTransform(); else if (state.residueMask.canRedo) void editMaskHistory("redo"); else void changePixelHistory("redo");
+        return;
+      }
+      if (state.activeModule === "background" && state.document && !backgroundLocked && !backgroundState.busy && event.ctrlKey && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        void modifyBackgroundSelection(state.document, "clear");
+        return;
+      }
+      if (state.activeModule === "background" && state.document && !backgroundLocked && !backgroundState.busy && (event.key === "Delete" || event.key === "Backspace") && backgroundState.summary.selectedPixels > 0) {
+        event.preventDefault();
+        void deleteBackgroundSelection(state.document);
+        return;
       }
       if ((event.key === "Delete" || event.key === "Backspace") && state.selectedGuideId) return;
       if ((event.key === "Delete" || event.key === "Backspace") && state.residueMask.hasSelection) {
         event.preventDefault();
         window.dispatchEvent(new CustomEvent("dtf:apply-residue"));
       }
-      if (event.key === "[") state.setResidueBrushSize(state.residueBrushSize - Math.max(1, Math.round(state.residueBrushSize * 0.12)));
-      if (event.key === "]") state.setResidueBrushSize(state.residueBrushSize + Math.max(1, Math.round(state.residueBrushSize * 0.12)));
+      if (state.activeModule === "transparency" && event.key === "[") state.setResidueBrushSize(state.residueBrushSize - Math.max(1, Math.round(state.residueBrushSize * 0.12)));
+      if (state.activeModule === "transparency" && event.key === "]") state.setResidueBrushSize(state.residueBrushSize + Math.max(1, Math.round(state.residueBrushSize * 0.12)));
       if (event.key === "0") useStudioStore.getState().fitDocument();
       if (event.key === "1") useStudioStore.getState().actualSize();
-      const toolKeys = { h: "hand", z: "zoom", b: "residue-brush", e: "eraser", v: "transform", l: "residue-lasso", m: "residue-rectangle", w: "residue-region" } as const;
+      const toolKeys = state.activeModule === "background"
+        ? { h: "hand", z: "zoom", v: "select", w: "background-wand", a: "background-auto", p: "background-protect", f: "background-mark", n: "background-never", r: "background-refine", b: "background-add", e: "background-subtract", k: "background-eraser", c: "background-cleanup" } as const
+        : { h: "hand", z: "zoom", b: "residue-brush", e: "eraser", v: "transform", l: "residue-lasso", m: "residue-rectangle", w: "residue-region" } as const;
       const tool = toolKeys[event.key.toLowerCase() as keyof typeof toolKeys];
       if (tool) useStudioStore.getState().setTool(tool);
     };

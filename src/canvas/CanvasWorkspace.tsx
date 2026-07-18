@@ -10,6 +10,9 @@ import type { MaskMode, MaskPoint } from "../types/residue";
 import type { DocumentGuide, PlacedImage } from "../types/document";
 import { artboardFor } from "../lib/measurements";
 import { PrecisionOverlay } from "./PrecisionOverlay";
+import { BackgroundRemovalCanvasOverlay } from "../features/background-removal/overlays/BackgroundRemovalCanvasOverlay";
+import { useBackgroundRemovalStore } from "../features/background-removal/state/backgroundRemovalStore";
+import { hidesOriginalForBackgroundPreview } from "../features/background-removal/overlays/backgroundPreview";
 
 type ResidueGesture = { tool: "residue-rectangle" | "residue-lasso" | "residue-brush"; points: MaskPoint[]; mode: MaskMode; pointerId: number };
 type PixiWorkspace = {
@@ -42,6 +45,8 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
   const previewBackground = useStudioStore((state) => state.previewBackground);
   const customBackgroundColor = useStudioStore((state) => state.customBackgroundColor);
   const activeTool = useStudioStore((state) => state.activeTool);
+  const activeModule = useStudioStore((state) => state.activeModule);
+  const backgroundView = useBackgroundRemovalStore((state) => state.view);
   const activeJob = useStudioStore((state) => state.activeJob);
   const setViewport = useStudioStore((state) => state.setViewport);
   const panBy = useStudioStore((state) => state.panBy);
@@ -195,8 +200,8 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
   useEffect(() => {
     const pixi = pixiRef.current;
     if (!pixi || !document) return;
-    const item = document.placedImage ?? (document.engineReady === false ? null : { sourceWidth: document.width, sourceHeight: document.height, x: 0, y: 0, width: document.width, height: document.height, rotation: 0 });
-    pixi.content.visible = Boolean(item);
+    const item = document.placedImage ?? (document.engineReady === false ? null : { sourceWidth: document.width, sourceHeight: document.height, x: 0, y: 0, width: document.width, height: document.height, rotation: 0, visible: true });
+    pixi.content.visible = Boolean(item) && item?.visible !== false;
     if (!item) return;
     pixi.content.pivot.set(item.sourceWidth / 2, item.sourceHeight / 2);
     pixi.content.position.set(item.x + item.width / 2, item.y + item.height / 2);
@@ -240,7 +245,9 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
           sprite.destroy({ texture: true, textureSource: true });
           return;
         }
-        sprite.visible = true;
+        const currentModule = useStudioStore.getState().activeModule;
+        const currentBackgroundView = useBackgroundRemovalStore.getState().view;
+        sprite.visible = document.placedImage?.visible !== false && !hidesOriginalForBackgroundPreview(currentModule, currentBackgroundView);
         pixi.baseSprite = sprite;
         swapped = true;
         if (previous && previous !== sprite) {
@@ -252,6 +259,13 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
     void load().catch((reason) => setImageError(reason instanceof Error ? reason.message : "No se pudo mostrar la imagen."));
     return () => { cancelled = true; if (!swapped) { /* la textura anterior permanece visible */ } };
   }, [document?.id, document?.renderRevision, rendererReady]);
+
+  useEffect(() => {
+    const pixi = pixiRef.current;
+    if (!pixi?.baseSprite) return;
+    const backgroundPreview = hidesOriginalForBackgroundPreview(activeModule, backgroundView);
+    pixi.baseSprite.visible = document?.placedImage?.visible !== false && !backgroundPreview;
+  }, [activeModule, backgroundView, document?.placedImage?.visible, document?.renderRevision, rendererReady]);
 
   useEffect(() => {
     const pixi = pixiRef.current;
@@ -432,6 +446,7 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
       if ((event.target as Element).closest(".precision-overlay")) return;
       const latest = useStudioStore.getState().document?.placedImage;
       if (!latest) return;
+      if (latest.transformLocked) return;
       const point = worldPoint(event);
       const handle = (event.target as HTMLElement).closest<HTMLElement>("[data-resize]")?.dataset.resize as ResizeHandle | undefined;
       const radians = -latest.rotation * Math.PI / 180;
@@ -596,6 +611,7 @@ export function CanvasWorkspace({ onOpen, onRemove }: { onOpen: () => void; onRe
   return (
     <div ref={hostRef} className={`canvas-workspace tool-${activeTool}${spaceHand ? " temporary-hand" : ""} background-${previewBackground}`} style={previewBackground === "custom" ? { background: customBackgroundColor } : undefined} aria-label="Lienzo de trabajo" onPointerDown={() => setContextMenu(null)}>
       <PrecisionOverlay />
+      <BackgroundRemovalCanvasOverlay />
       {!document && (
         <button className="empty-canvas" onClick={onOpen}>
           <ImagePlus size={34} strokeWidth={1.3} />

@@ -2,7 +2,7 @@ schema_version: "1.0"
 documentation_scope: transparency_module
 application:
   name: "DTF Pro Studio"
-  version: "0.4.2"
+  version: "0.4.4"
   product_type: "windows_desktop"
   frontend: "React 19 + TypeScript + Vite"
   backend: "Tauri 2 + Rust"
@@ -60,6 +60,7 @@ document_workspace:
     rulers: [horizontal, vertical]
     ruler_origin: artboard_center
     ruler_numbering: continuous_negative_zero_positive
+    ruler_labels_fully_visible: true
     draggable_guides: true
     guide_from_top_ruler: horizontal
     guide_from_left_ruler: vertical
@@ -69,6 +70,19 @@ document_workspace:
     permanent_center_marks: false
     visibility_persisted: true
     included_in_export: false
+background_removal:
+  selection_display: marching_ants_black_white_1px
+  color_overlay_default: false
+  clear_selection_shortcut: ctrl_d
+  delete_selection_shortcuts: [delete, backspace]
+  delete_behavior: accumulate_user_subtract_mask_and_clear_selection
+  border_detection: single_multiseed_cielab_pass
+  precise_color_default: false
+  precise_color_option: ciede2000
+notifications:
+  position: bottom_center_of_canvas
+  manually_dismissible: true
+  auto_dismiss_ms: 10000
 automation:
   mcp_server_available: false
   tauri_ipc_available: true

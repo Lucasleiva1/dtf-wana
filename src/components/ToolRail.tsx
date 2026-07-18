@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { BoxSelect, Brush, Eraser, Hand, Lasso, MousePointer2, Paintbrush, ScanSearch, Search, Sparkles, SquareMousePointer, WandSparkles, ZoomIn } from "lucide-react";
 import { useStudioStore } from "../stores/studioStore";
 import type { ModuleId, ToolId } from "../types/document";
+import { BackgroundRemovalToolRail } from "../features/background-removal/components/BackgroundRemovalToolRail";
 
 const common: Array<[ToolId, string, typeof Hand]> = [
   ["select", "Seleccionar", SquareMousePointer],
@@ -45,6 +46,7 @@ export function ToolRail() {
     if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
     holdTimer.current = null;
   };
+  if (module === "background") return <BackgroundRemovalToolRail />;
   return (
     <aside className="tool-rail" aria-label="Herramientas">
       {[...common, ...moduleTools[module]].map(([id, label, Icon], index) => (

@@ -1,0 +1,64 @@
+.marching-ants path {
+  fill: none;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  pointer-events: none;
+}
+
+.marching-ants .ants-contrast {
+  stroke: #080808;
+  stroke-width: 1.35px;
+}
+
+.marching-ants .ants-light {
+  stroke: #fff;
+  stroke-width: 1px;
+  stroke-dasharray: 3 3;
+  animation: background-march .48s linear infinite;
+}
+
+.marching-ants.paused .ants-light { animation-play-state: paused; }
+
+@keyframes background-march {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marching-ants .ants-light { animation: none; }
+}
+
+.background-delete-selection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 32px;
+  color: #fff;
+  border: 1px solid #d15b5b;
+  background: #8a3035;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.background-delete-selection:not(:disabled):hover { background: #a53a40; }
+.background-delete-selection kbd { margin-left: auto; color: #ffd9d9; background: transparent; font-size: 7px; }
+
+.background-advanced {
+  border: 1px solid #2f4b5c;
+  background: #14212a;
+}
+
+.background-advanced summary {
+  padding: 7px;
+  color: #8fa9b8;
+  cursor: pointer;
+  font-size: 8px;
+  user-select: none;
+}
+
+.background-advanced > div,
+.background-advanced > label {
+  margin: 0 7px 7px;
+}

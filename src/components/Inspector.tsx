@@ -22,6 +22,7 @@ import { InspectorZone } from "./InspectorZone";
 import { ResidueCleanup } from "./ResidueCleanup";
 import { EdgePolish } from "./EdgePolish";
 import { BatchSetupPanel, type BatchController } from "./BatchPanel";
+import { BackgroundRemovalInspector } from "../features/background-removal/components/BackgroundRemovalInspector";
 
 const tabs: Array<[ModuleId, string]> = [["background", "Quitar fondo"], ["transparency", "Transparencias"], ["separation", "Separar"]];
 const number = new Intl.NumberFormat("es-AR");
@@ -47,12 +48,12 @@ export function Inspector({ batchMode = false, batch, onExitBatch }: { batchMode
   const document = useStudioStore((state) => state.document);
   if (document?.engineReady === false) return <aside className="inspector empty-document-inspector"><ModulePlaceholder icon={<Layers3 size={24} />} title="Mesa vacía" text="Abrí o arrastrá una imagen para colocarla. Las medidas, reglas y guías ya están activas." /></aside>;
   return (
-    <aside className="inspector">
+    <aside className={`inspector module-${activeModule}`}>
       <div className="module-tabs" role="tablist" aria-label="Módulos">
         {tabs.map(([id, label]) => <button role="tab" disabled={batchMode && id !== "transparency"} aria-selected={activeModule === id} className={activeModule === id ? "active" : ""} onClick={() => setModule(id)} key={id}>{label}</button>)}
       </div>
       {activeModule === "transparency" && <TransparencyInspector batch={batchMode ? batch : undefined} onExitBatch={onExitBatch} />}
-      {activeModule === "background" && <ModulePlaceholder icon={<CircleCheck size={24} />} title="Quitar fondo" text="Primero manual y varita. La IA se habilita sólo después de cerrar Transparencias." />}
+      {activeModule === "background" && <BackgroundRemovalInspector />}
       {activeModule === "separation" && <ModulePlaceholder icon={<Layers3 size={24} />} title="Separar elementos" text="Este módulo no forma parte del alcance actual de DTF Pro Studio." />}
     </aside>
   );

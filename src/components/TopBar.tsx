@@ -4,6 +4,8 @@ import { exportVerifiedDocument } from "../lib/alphaService";
 import { changePixelHistory } from "../lib/historyService";
 import { useStudioStore } from "../stores/studioStore";
 import { UpdatePanel } from "./UpdatePanel";
+import { exportBackgroundResult, redoBackgroundMask, undoBackgroundMask } from "../features/background-removal/commands/backgroundRemovalService";
+import { useBackgroundRemovalStore } from "../features/background-removal/state/backgroundRemovalStore";
 
 export function TopBar({ onNew, onOpen, onRemove, onProperties, onBatch, importingImage = false, batchMode = false, batchRunning = false }: { onNew: () => void; onOpen: () => void; onRemove: () => void; onProperties: () => void; onBatch: () => void; importingImage?: boolean; batchMode?: boolean; batchRunning?: boolean }) {
   const history = useStudioStore((state) => state.history);
@@ -19,6 +21,9 @@ export function TopBar({ onNew, onOpen, onRemove, onProperties, onBatch, importi
   const setNotification = useStudioStore((state) => state.setNotification);
   const setActiveJob = useStudioStore((state) => state.setActiveJob);
   const visualReviewComplete = useStudioStore((state) => state.visualReviewComplete);
+  const activeModule = useStudioStore((state) => state.activeModule);
+  const backgroundSummary = useBackgroundRemovalStore((state) => state.summary);
+  const backgroundOutputAlpha = useBackgroundRemovalStore((state) => state.outputAlpha);
   const [exporting, setExporting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
@@ -37,6 +42,20 @@ export function TopBar({ onNew, onOpen, onRemove, onProperties, onBatch, importi
     if (!document) return;
     if (!selectedItemId) {
       setNotification({ kind: "info", text: "Seleccioná la imagen con un clic antes de exportar." });
+      return;
+    }
+    if (activeModule === "background") {
+      if (!backgroundSummary.selectedPixels) {
+        setNotification({ kind: "info", text: "Seleccioná el fondo con la varita, el detector de bordes o el pincel antes de exportar." });
+        return;
+      }
+      setExporting(true);
+      try {
+        const result = await exportBackgroundResult(document, backgroundOutputAlpha, (job) => setActiveJob(job));
+        if (result) setNotification({ kind: "success", text: `PNG sin fondo reabierto y verificado · ${result.width.toLocaleString("es-AR")} × ${result.height.toLocaleString("es-AR")} px · ${result.dpi} PPP.` });
+      } catch (reason) {
+        setNotification({ kind: "error", text: reason instanceof Error ? reason.message : String(reason) });
+      } finally { setActiveJob(null); setExporting(false); }
       return;
     }
     if (!analysis) {
@@ -82,8 +101,8 @@ export function TopBar({ onNew, onOpen, onRemove, onProperties, onBatch, importi
         <button disabled={!document} title="Guardar proyecto"><Save size={16} /><span>Guardar</span></button>
         <button disabled={!document} onClick={onProperties} title="Propiedades del documento"><Info size={16} /><span>Propiedades</span></button>
         <i />
-        <button onClick={() => transformPast.length ? undoPlacedImageTransform() : void changePixelHistory("undo")} disabled={history.length <= 1 && !transformPast.length} title="Deshacer (Ctrl+Z)"><Undo2 size={16} /></button>
-        <button onClick={() => transformFuture.length ? redoPlacedImageTransform() : void changePixelHistory("redo")} disabled={!future.length && !transformFuture.length} title="Rehacer (Ctrl+Y)"><Redo2 size={16} /></button>
+        <button onClick={() => activeModule === "background" && document ? void undoBackgroundMask(document) : transformPast.length ? undoPlacedImageTransform() : void changePixelHistory("undo")} disabled={activeModule === "background" ? !backgroundSummary.canUndo : history.length <= 1 && !transformPast.length} title="Deshacer (Ctrl+Z)"><Undo2 size={16} /></button>
+        <button onClick={() => activeModule === "background" && document ? void redoBackgroundMask(document) : transformFuture.length ? redoPlacedImageTransform() : void changePixelHistory("redo")} disabled={activeModule === "background" ? !backgroundSummary.canRedo : !future.length && !transformFuture.length} title="Rehacer (Ctrl+Y)"><Redo2 size={16} /></button>
         <button onClick={() => useStudioStore.setState({ camera: { x: 120, y: 80, zoom: 1 } })} title="Restablecer vista"><RotateCcw size={16} /></button>
       </div>
       <div className="topbar-end"><button title="Configuración y actualizaciones" onClick={() => setSettingsOpen(true)}><Settings2 size={16} /><span>Ajustes</span></button><button className="export-button" disabled={!document || document.engineReady === false || exporting || batchMode} onClick={exportDocument}>{exporting ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}<span>{exporting ? "Verificando" : "Exportar"}</span></button></div>

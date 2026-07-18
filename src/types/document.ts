@@ -29,6 +29,11 @@ export type PlacedImage = {
   height: number;
   rotation: number;
   lockAspect: boolean;
+  visible?: boolean;
+  transformLocked?: boolean;
+  contentLocked?: boolean;
+  maskLocked?: boolean;
+  transparencyProtected?: boolean;
 };
 
 export type DocumentGuide = {
@@ -40,7 +45,10 @@ export type DocumentGuide = {
 };
 export type ToolId =
   | "select" | "transform" | "hand" | "zoom" | "brush" | "eraser" | "analyze"
-  | "residue-region" | "residue-rectangle" | "residue-lasso" | "residue-brush";
+  | "residue-region" | "residue-rectangle" | "residue-lasso" | "residue-brush"
+  | "background-wand" | "background-auto" | "background-protect" | "background-mark"
+  | "background-never" | "background-refine" | "background-add" | "background-subtract"
+  | "background-eraser" | "background-cleanup";
 
 export type StudioDocument = {
   id: string;

@@ -2,6 +2,22 @@
 
 Este archivo registra cambios confirmados en el repositorio. Para publicar una versión también deben actualizarse `package.json`, `src-tauri/Cargo.toml` y `src-tauri/tauri.conf.json`.
 
+## [Sin publicar]
+
+## [0.4.4] - 2026-07-18
+
+### Interfaz
+
+- Los avisos ahora aparecen centrados en la parte inferior del área de imagen, conservan el cierre manual y desaparecen automáticamente después de 10 segundos.
+- Las cifras de la regla horizontal se muestran completas dentro de la franja superior, sin recortes verticales.
+- Quitar fondo muestra la selección con un borde blanco/negro fino y animado tipo Photoshop, sin overlay de color predeterminado; la animación se pausa cuando la ventana pierde el foco.
+- La selección puede convertirse repetidamente en transparencia con el botón **Borrar fondo seleccionado** o Supr/Retroceso; Ctrl+D deselecciona y Deshacer/Rehacer conserva cada borrado como un delta independiente.
+- La vista Resultado oculta la textura original y deja que el alfa eliminado revele el damero real del lienzo; ya no dibuja un patrón gris reducido que simulaba una capa detrás de la imagen.
+
+### Rendimiento
+
+- La detección desde bordes procesa las cuatro esquinas en una sola operación, convierte CIELAB una sola vez, paraleliza la conversión y evita asignaciones por píxel durante el crecimiento. CIEDE2000 queda como precisión máxima opcional y el modo rápido es el predeterminado.
+
 ## [0.4.3] - 2026-07-18
 
 ### Documentos, medidas y mesa de trabajo

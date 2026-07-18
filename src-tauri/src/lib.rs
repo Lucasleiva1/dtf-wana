@@ -1,5 +1,6 @@
 mod alpha_engine;
 mod application;
+mod background_removal;
 mod commands;
 mod edge_polish_engine;
 mod image_engine;
@@ -24,6 +25,21 @@ pub fn run() {
             commands::residue::get_residue_mask_tile,
             commands::residue::get_residue_mask_bytes,
             commands::residue::get_residue_mask_summary,
+            commands::background_removal::background_get_state,
+            commands::background_removal::background_magic_wand,
+            commands::background_removal::background_select_from_borders,
+            commands::background_removal::background_selection_action,
+            commands::background_removal::background_apply_stroke,
+            commands::background_removal::background_eraser_stroke,
+            commands::background_removal::background_generate_unknown_band,
+            commands::background_removal::background_refine_edge,
+            commands::background_removal::background_cleanup,
+            commands::background_removal::background_undo,
+            commands::background_removal::background_redo,
+            commands::background_removal::background_get_overlay,
+            commands::background_removal::background_get_contours,
+            commands::background_removal::start_background_export_job,
+            commands::background_removal::background_model_status,
             commands::jobs::start_alpha_analysis_job,
             commands::jobs::start_alpha_preview_job,
             commands::jobs::start_alpha_treatment_job,

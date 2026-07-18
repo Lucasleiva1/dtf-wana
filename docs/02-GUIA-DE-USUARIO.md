@@ -43,6 +43,8 @@ Si los PPP detectados no coinciden con los 300 PPP de la mesa, **Propiedades de 
 
 **Quitar imagen** retira solamente el elemento colocado. La mesa actual, sus dimensiones, PPP y guías permanecen visibles, con un botón **Abrir otra imagen** para continuar sin volver al inicio.
 
+Los avisos de importación y resolución aparecen centrados debajo del área de imagen. Pueden cerrarse con **×** y desaparecen automáticamente después de 10 segundos.
+
 ## Usar reglas y guías
 
 - Arrastre desde la regla superior para crear una guía horizontal.
@@ -50,6 +52,7 @@ Si los PPP detectados no coinciden con los 300 PPP de la mesa, **Propiedades de 
 - Arrastre una guía para moverla. Para eliminarla, devuélvala a su regla, selecciónela y pulse Supr/Retroceso, o use **Eliminar guía** en el menú contextual.
 - Abra **Propiedades → Contenido** para escribir su posición exacta en la unidad del documento.
 - El cero de ambas reglas está en el centro matemático de la mesa; los valores son negativos hacia la izquierda/arriba y positivos hacia la derecha/abajo.
+- Las cifras de la regla superior se muestran completas dentro de su franja, por encima de las marcas de medición.
 - Al acercar una guía al cero, se pega suavemente y muestra **0 · centro**. Al mover una imagen cerca de los centros o bordes, aparecen indicadores violetas cortos y nítidos sólo durante el gesto.
 - En **Ajustes → Precisión y ayudas visuales** puede ocultar reglas o guías, bloquear guías y activar o desactivar el imán y las guías inteligentes.
 
@@ -69,6 +72,18 @@ El botón **Propiedades** muestra origen, formato, píxeles, tamaño físico, PP
 4. Revise **En uso** o la barra inferior para confirmar el backend realmente activo. Si WebGL no está disponible, la aplicación puede usar CPU como respaldo.
 
 GPU es la opción predeterminada y recomendada para que el zoom, el desplazamiento y las máscaras sean más fluidos. Este ajuste controla el lienzo; el procesamiento técnico de alfa, residuos, pulido y exportación continúa en el motor Rust de CPU.
+
+## Quitar fondo con selección
+
+1. Seleccione la imagen y abra **Quitar fondo**.
+2. Use **Detectar desde bordes** o la **Varita mágica (W)**. La selección aparece como un borde blanco y negro fino en movimiento; el overlay de color es opcional.
+3. Pulse **Borrar fondo seleccionado**, Supr o Retroceso. La zona pasa a transparencia de forma no destructiva y la selección se limpia.
+4. Vuelva a usar la varita dentro de letras, huecos o regiones separadas y repita el borrado todas las veces necesarias.
+5. Ctrl+D quita únicamente la selección activa. Ctrl+Z y Ctrl+Y deshacen o rehacen cada modificación de máscara.
+
+El modo rápido de color es el predeterminado. **Precisión máxima (CIEDE2000)** está dentro de Opciones avanzadas y puede tardar más en imágenes de muchos millones de píxeles.
+
+En la vista **Resultado**, la transparencia revela directamente el damero del lienzo. Las vistas **Blanco**, **Negro** y **Gris** son fondos de comprobación y no se exportan como parte de la imagen.
 
 ## Límites visibles
 
