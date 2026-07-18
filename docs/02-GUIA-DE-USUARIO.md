@@ -30,6 +30,46 @@
 
 [CAPTURA PENDIENTE: modo lote violeta mostrando bloque de carpetas, etapas SÍ/NO y cola horizontal bajo el canvas]
 
+## Crear un documento con medidas reales
+
+1. En la pantalla de inicio pulse **Nuevo documento**.
+2. Elija un preajuste o indique ancho, alto, unidad, PPP, profundidad, perfil y fondo.
+3. El valor inicial DTF es **38 × 38 cm a 300 PPP**, equivalente a **4488 × 4488 px**.
+4. Revise los píxeles y la memoria estimada antes de crear.
+
+Las unidades disponibles son px, cm, mm, pulgadas, puntos y picas. Un documento nuevo crea una mesa vacía; no crea una imagen blanca. Al abrir una imagen sobre esa mesa, queda colocada en el centro con su tamaño físico real: `píxeles ÷ PPP de origen × 2,54` centímetros. Nunca se agranda para llenar la mesa. Si el archivo no declara PPP, se usa y se informa el respaldo de 300 PPP. La imagen puede moverse incluso fuera de los límites y los campos X, Y, W, H y rotación permiten introducir valores exactos.
+
+Si los PPP detectados no coinciden con los 300 PPP de la mesa, **Propiedades de imagen** muestra ambos valores y ofrece **Convertir a 300 PPP**. La acción es explícita y no remuestrea: conserva exactamente los píxeles originales y recalcula el tamaño impreso en centímetros. Si el archivo no informa PPP, la aplicación no afirma un tamaño real; muestra **PPP de origen no informados** hasta que se pulse **Asignar 300 PPP**.
+
+**Quitar imagen** retira solamente el elemento colocado. La mesa actual, sus dimensiones, PPP y guías permanecen visibles, con un botón **Abrir otra imagen** para continuar sin volver al inicio.
+
+## Usar reglas y guías
+
+- Arrastre desde la regla superior para crear una guía horizontal.
+- Arrastre desde la regla lateral para crear una guía vertical.
+- Arrastre una guía para moverla. Para eliminarla, devuélvala a su regla, selecciónela y pulse Supr/Retroceso, o use **Eliminar guía** en el menú contextual.
+- Abra **Propiedades → Contenido** para escribir su posición exacta en la unidad del documento.
+- El cero de ambas reglas está en el centro matemático de la mesa; los valores son negativos hacia la izquierda/arriba y positivos hacia la derecha/abajo.
+- Al acercar una guía al cero, se pega suavemente y muestra **0 · centro**. Al mover una imagen cerca de los centros o bordes, aparecen indicadores violetas cortos y nítidos sólo durante el gesto.
+- En **Ajustes → Precisión y ayudas visuales** puede ocultar reglas o guías, bloquear guías y activar o desactivar el imán y las guías inteligentes.
+
+La herramienta **Selección** permite elegir y mover la imagen libremente, incluso fuera de la mesa. Sus ocho tiradores cuadrados cambian el tamaño siempre en proporción. La herramienta **Mano**, el botón central o mantener Espacio desplazan la vista sin mover la imagen. Si no hay una imagen seleccionada, Propiedades no muestra medidas del elemento y las operaciones de procesamiento piden seleccionarla.
+
+Estas ayudas sólo existen en el editor: nunca se incluyen en la exportación.
+
+## Consultar propiedades
+
+El botón **Propiedades** muestra origen, formato, píxeles, tamaño físico, PPP, perfil, profundidad, contenido colocado, guías y condiciones de exportación. Si PNG o JPEG no contiene PPP confiables, se asumen 300 y se muestra la advertencia. Cambiar los PPP desde Propiedades no remuestrea ni modifica píxeles.
+
+## Elegir GPU o CPU
+
+1. Pulse **Ajustes** en la esquina superior derecha.
+2. En **Renderizador de imagen**, elija **GPU** para WebGL de alto rendimiento o **CPU** para Canvas 2D.
+3. El cambio se aplica inmediatamente y queda guardado para el próximo inicio.
+4. Revise **En uso** o la barra inferior para confirmar el backend realmente activo. Si WebGL no está disponible, la aplicación puede usar CPU como respaldo.
+
+GPU es la opción predeterminada y recomendada para que el zoom, el desplazamiento y las máscaras sean más fluidos. Este ajuste controla el lienzo; el procesamiento técnico de alfa, residuos, pulido y exportación continúa en el motor Rust de CPU.
+
 ## Límites visibles
 
 - Durante el lote se bloquean apertura, eliminación y exportación individual.

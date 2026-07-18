@@ -7,6 +7,68 @@ application:
   frontend: "React 19 + TypeScript + Vite"
   backend: "Tauri 2 + Rust"
   processing_location: "local"
+rendering:
+  default_device: gpu
+  selectable_devices:
+    gpu: "WebGL high-performance"
+    cpu: "Canvas 2D"
+  gpu_fallback: cpu
+  persistence_key: "dtf-pro-studio.render-device.v1"
+  applies_to:
+    - canvas
+    - image_preview
+    - residue_mask_overlay
+  rust_processing_device: cpu
+document_workspace:
+  default_preset:
+    width: 38
+    height: 38
+    unit: cm
+    ppi: 300
+    width_px: 4488
+    height_px: 4488
+  units: [px, cm, mm, in, pt, pc]
+  artboards_in_current_ui: 1
+  empty_document_uploads_to_rust: false
+  placed_image:
+    editable: [x, y, width, height, rotation, lock_aspect]
+    may_extend_outside_artboard: true
+    source_ppi_preserved: true
+    target_ppi: 300
+    ppi_mismatch_warning: true
+    convert_to_target_ppi:
+      explicit_user_action: true
+      resample_pixels: false
+      preserves_source_pixel_dimensions: true
+      recalculates_physical_size: true
+    missing_source_ppi:
+      physical_size_confirmed: false
+      explicit_assign_action: true
+    natural_size_formula: "source_pixels * artboard_ppi / source_ppi"
+    auto_fit_to_artboard: false
+    remove_preserves_artboard_and_guides: true
+    pointer_updates: request_animation_frame_coalesced
+    selection_required_for_processing: true
+    resize_handles: [nw, n, ne, e, se, s, sw, w]
+    aspect_ratio_always_locked: true
+    mutates_source_pixels: false
+  ppi_metadata:
+    detected: [png_phys, jpeg_jfif]
+    fallback: 300
+    fallback_is_disclosed: true
+  precision_aids:
+    rulers: [horizontal, vertical]
+    ruler_origin: artboard_center
+    ruler_numbering: continuous_negative_zero_positive
+    draggable_guides: true
+    guide_from_top_ruler: horizontal
+    guide_from_left_ruler: vertical
+    guide_center_snap: true
+    smart_guides: short_solid_temporary
+    numeric_guide_positions: true
+    permanent_center_marks: false
+    visibility_persisted: true
+    included_in_export: false
 automation:
   mcp_server_available: false
   tauri_ipc_available: true

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ChevronLeft, ChevronRight, CircleCheck, Clock3, Eye, Layers3,
-  LoaderCircle, MemoryStick, Pause, ScanSearch, ShieldCheck, Sparkles, Trash2, WandSparkles, X,
+  LoaderCircle, MemoryStick, MousePointer2, Pause, Ruler, ScanSearch, ShieldCheck, Sparkles, Trash2, WandSparkles, X,
 } from "lucide-react";
 import { getDocumentPreview } from "../lib/alphaService";
 import { cancelJob, runAnalysisJob, runPreviewJob, runTreatmentJob } from "../lib/jobService";
@@ -15,6 +15,9 @@ import type {
   RiskLevel, TreatmentImpact,
 } from "../types/alpha";
 import type { ModuleId } from "../types/document";
+import type { PlacedImage } from "../types/document";
+import { artboardFor, measurementToPixels, pixelsToMeasurement } from "../lib/measurements";
+import { assignPlacedImagePpi, naturalPlacedSize } from "../app/documentPlacement";
 import { InspectorZone } from "./InspectorZone";
 import { ResidueCleanup } from "./ResidueCleanup";
 import { EdgePolish } from "./EdgePolish";
@@ -41,6 +44,8 @@ const defaultProtections: ProtectionOptions = {
 export function Inspector({ batchMode = false, batch, onExitBatch }: { batchMode?: boolean; batch?: BatchController; onExitBatch?: () => void }) {
   const activeModule = useStudioStore((state) => state.activeModule);
   const setModule = useStudioStore((state) => state.setModule);
+  const document = useStudioStore((state) => state.document);
+  if (document?.engineReady === false) return <aside className="inspector empty-document-inspector"><ModulePlaceholder icon={<Layers3 size={24} />} title="Mesa vacía" text="Abrí o arrastrá una imagen para colocarla. Las medidas, reglas y guías ya están activas." /></aside>;
   return (
     <aside className="inspector">
       <div className="module-tabs" role="tablist" aria-label="Módulos">
@@ -55,6 +60,7 @@ export function Inspector({ batchMode = false, batch, onExitBatch }: { batchMode
 
 function TransparencyInspector({ batch, onExitBatch }: { batch?: BatchController; onExitBatch?: () => void }) {
   const document = useStudioStore((state) => state.document);
+  const selectedItemId = useStudioStore((state) => state.selectedItemId);
   const analysis = useStudioStore((state) => state.alphaAnalysis);
   const error = useStudioStore((state) => state.alphaError);
   const regionIndex = useStudioStore((state) => state.alphaRegionIndex);
@@ -314,6 +320,7 @@ function TransparencyInspector({ batch, onExitBatch }: { batch?: BatchController
       ? "Opcional · alfa 0/255 verificado"
       : `${number.format(analysis.partialAlphaPixels)} semitransparencias pendientes`;
   const zoneMeta: Record<InspectorZoneId, { title: string; summary: string; icon: React.ReactNode }> = {
+    properties: { title: "Propiedades de imagen", summary: selectedItemId && document?.placedImage ? `${number.format(Math.round(document.placedImage.width))} × ${number.format(Math.round(document.placedImage.height))} px` : "Seleccioná una imagen", icon: <Ruler size={15} /> },
     alpha: { title: "Tratamiento de transparencias", summary: batch ? (batch.config.alphaEnabled ? `Incluido · umbral ${batch.config.alpha.thresholdPercent}%` : "Excluido del lote") : alphaSummary, icon: <ScanSearch size={15} /> },
     residue: { title: "Limpieza de residuos", summary: batch ? (batch.config.residueEnabled ? "Incluida en el lote" : "Excluida del lote") : residueSummary, icon: <Trash2 size={15} /> },
     polish: { title: "Pulido de borde", summary: batch ? (batch.config.polishEnabled ? "Incluido en el lote" : "Excluido del lote") : polishSummary, icon: <WandSparkles size={15} /> },
@@ -337,15 +344,15 @@ function TransparencyInspector({ batch, onExitBatch }: { batch?: BatchController
           onDragStart={startZoneDrag}
           onDragMove={moveZoneDrag}
           onDragEnd={finishZoneDrag}
-          batchEnabled={batch ? zoneId === "alpha" ? batch.config.alphaEnabled : zoneId === "residue" ? batch.config.residueEnabled : batch.config.polishEnabled : undefined}
+          batchEnabled={batch && zoneId !== "properties" ? zoneId === "alpha" ? batch.config.alphaEnabled : zoneId === "residue" ? batch.config.residueEnabled : batch.config.polishEnabled : undefined}
           batchRunning={batch?.running}
-          onBatchEnabledChange={batch ? (enabled) => batch.setConfig(zoneId === "alpha"
+          onBatchEnabledChange={batch && zoneId !== "properties" ? (enabled) => batch.setConfig(zoneId === "alpha"
             ? { ...batch.config, alphaEnabled: enabled }
             : zoneId === "residue"
               ? { ...batch.config, residueEnabled: enabled }
               : { ...batch.config, polishEnabled: enabled }) : undefined}
         >
-          {batch ? zoneId === "alpha" ? <BatchAlphaOptions batch={batch} /> : zoneId === "residue" ? <ResidueCleanup
+          {zoneId === "properties" ? <ImagePropertiesPanel /> : !batch && !selectedItemId ? <SelectionRequired /> : batch ? zoneId === "alpha" ? <BatchAlphaOptions batch={batch} /> : zoneId === "residue" ? <ResidueCleanup
             protectedRegionIds={[]}
             onUnprotectCurrent={() => undefined}
             batch={{ enabled: batch.config.residueEnabled, running: batch.running, options: batch.config.residue, onChange: (options) => batch.setConfig({ ...batch.config, residue: options }) }}
@@ -472,6 +479,60 @@ function TransparencyInspector({ batch, onExitBatch }: { batch?: BatchController
       </div>
     </div>
   );
+}
+
+function ImagePropertiesPanel() {
+  const document = useStudioStore((state) => state.document);
+  const selectedItemId = useStudioStore((state) => state.selectedItemId);
+  const updatePlacedImage = useStudioStore((state) => state.updatePlacedImage);
+  const updateDocument = useStudioStore((state) => state.updateDocument);
+  const setNotification = useStudioStore((state) => state.setNotification);
+  const commitTransform = useStudioStore((state) => state.commitPlacedImageTransform);
+  const editStart = useRef<PlacedImage | null>(null);
+  const item = selectedItemId && document?.placedImage?.id === selectedItemId ? document.placedImage : null;
+  if (!document || !item) return <section className="image-properties-empty"><MousePointer2 size={22} /><b>Seleccioná la imagen</b><p>Hacé clic sobre la imagen con la herramienta Selección para ver y modificar sus medidas.</p></section>;
+  const artboard = artboardFor(document);
+  const unit = artboard.preferredUnit;
+  const natural = naturalPlacedSize(item, artboard.ppi);
+  const toUnit = (value: number) => pixelsToMeasurement(value, unit, artboard.ppi);
+  const toPixels = (value: number) => measurementToPixels(value, unit, artboard.ppi);
+  const begin = () => { editStart.current = structuredClone(item); };
+  const finish = () => { if (editStart.current) commitTransform(editStart.current); editStart.current = null; };
+  const setProportionalWidth = (width: number) => updatePlacedImage({ width, height: width * item.sourceHeight / item.sourceWidth, lockAspect: true });
+  const setProportionalHeight = (height: number) => updatePlacedImage({ height, width: height * item.sourceWidth / item.sourceHeight, lockAspect: true });
+  const scale = item.width / natural.width * 100;
+  const originalWidthCm = pixelsToMeasurement(natural.width, "cm", artboard.ppi);
+  const originalHeightCm = pixelsToMeasurement(natural.height, "cm", artboard.ppi);
+  const actualWidthCm = pixelsToMeasurement(item.width, "cm", artboard.ppi);
+  const actualHeightCm = pixelsToMeasurement(item.height, "cm", artboard.ppi);
+  const resolutionNeedsAction = Boolean(document.ppiAssumed) || Math.abs(item.sourcePpi - artboard.ppi) > 0.01;
+  const convertedWidthCm = item.sourceWidth / artboard.ppi * 2.54;
+  const convertedHeightCm = item.sourceHeight / artboard.ppi * 2.54;
+  const convertToArtboardPpi = () => {
+    const before = structuredClone(item);
+    const converted = assignPlacedImagePpi(document, artboard.ppi);
+    updateDocument({ placedImage: converted.placedImage, ppiAssumed: false, dirty: true });
+    commitTransform(before);
+    setNotification({ kind: "success", text: `Resolución asignada a ${artboard.ppi} PPP sin remuestrear: se conservaron ${item.sourceWidth} × ${item.sourceHeight} píxeles.` });
+  };
+  return <section className="image-properties-panel">
+    <div className="selected-image-heading"><span>IMAGEN SELECCIONADA</span><b title={item.name}>{item.name}</b></div>
+    {resolutionNeedsAction && <div className="image-resolution-warning"><AlertTriangle size={17} /><div><b>{document.ppiAssumed ? "PPP de origen no informados" : `Imagen a ${number.format(item.sourcePpi)} PPP · mesa a ${number.format(artboard.ppi)} PPP`}</b><p>{document.ppiAssumed ? `El archivo no permite confirmar sus centímetros. Asigná ${artboard.ppi} PPP sólo si querés interpretar estos píxeles a esa resolución.` : `Convertir conserva ${number.format(item.sourceWidth)} × ${number.format(item.sourceHeight)} px y cambia el tamaño impreso a ${number.format(convertedWidthCm)} × ${number.format(convertedHeightCm)} cm.`}</p><button onClick={convertToArtboardPpi}>{document.ppiAssumed ? `Asignar ${artboard.ppi} PPP` : `Convertir a ${artboard.ppi} PPP`}</button></div></div>}
+    <div className="image-property-grid">
+      <label>X<input type="number" step="0.01" value={Number(toUnit(item.x).toFixed(3))} onFocus={begin} onBlur={finish} onChange={(event) => updatePlacedImage({ x: toPixels(Number(event.target.value)) })} /></label>
+      <label>Y<input type="number" step="0.01" value={Number(toUnit(item.y).toFixed(3))} onFocus={begin} onBlur={finish} onChange={(event) => updatePlacedImage({ y: toPixels(Number(event.target.value)) })} /></label>
+      <label>Ancho<input type="number" min="0.001" step="0.01" value={Number(toUnit(item.width).toFixed(3))} onFocus={begin} onBlur={finish} onChange={(event) => setProportionalWidth(Math.max(1, toPixels(Number(event.target.value))))} /></label>
+      <label>Alto<input type="number" min="0.001" step="0.01" value={Number(toUnit(item.height).toFixed(3))} onFocus={begin} onBlur={finish} onChange={(event) => setProportionalHeight(Math.max(1, toPixels(Number(event.target.value))))} /></label>
+      <label>Escala %<input type="number" min="0.01" step="0.1" value={Number(scale.toFixed(2))} onFocus={begin} onBlur={finish} onChange={(event) => setProportionalWidth(natural.width * Math.max(0.0001, Number(event.target.value) / 100))} /></label>
+      <label>Rotación<input type="number" step="0.1" value={item.rotation} onFocus={begin} onBlur={finish} onChange={(event) => updatePlacedImage({ rotation: Number(event.target.value) })} /></label>
+    </div>
+    <div className="proportion-lock">🔗 Proporción bloqueada · {unit}</div>
+    <dl className="metrics compact"><div><dt>Original</dt><dd>{number.format(item.sourceWidth)} × {number.format(item.sourceHeight)} px · {document.ppiAssumed ? "PPP no informados" : `${number.format(item.sourcePpi)} PPP`}</dd></div><div><dt>Tamaño real</dt><dd>{document.ppiAssumed ? "Pendiente de confirmar los PPP de origen" : `${number.format(originalWidthCm)} × ${number.format(originalHeightCm)} cm`}</dd></div><div><dt>Actual</dt><dd>{number.format(Math.round(item.width))} × {number.format(Math.round(item.height))} px · {document.ppiAssumed ? "cm pendientes" : `${number.format(actualWidthCm)} × ${number.format(actualHeightCm)} cm`}</dd></div></dl>
+  </section>;
+}
+
+function SelectionRequired() {
+  return <section className="image-properties-empty"><MousePointer2 size={22} /><b>Seleccioná la imagen para continuar</b><p>Elegí la herramienta Selección y hacé clic sobre la imagen. Ninguna tarea modificará un objeto que no esté seleccionado.</p></section>;
 }
 
 function BatchAlphaOptions({ batch }: { batch: BatchController }) {

@@ -9,6 +9,12 @@
 | `src/components/EdgePolish.tsx` | Controles y comparación de pulido |
 | `src/components/BatchPanel.tsx` | Configuración, cola y orquestación secuencial |
 | `src/components/TopBar.tsx` | Apertura, modo lote y exportación individual |
+| `src/components/UpdatePanel.tsx` | Ajustes, selector GPU/CPU y actualizaciones |
+| `src/components/NewDocumentDialog.tsx` | Creación de mesa con medidas físicas, PPP y preajustes |
+| `src/components/DocumentPropertiesDialog.tsx` | Información técnica y edición no destructiva de unidad/PPP/guías |
+| `src/canvas/PrecisionOverlay.tsx` | Reglas continuas de origen central, guías arrastrables y magnetismo al cero |
+| `src/lib/measurements.ts` | Conversión entre px, cm, mm, in, pt y pc |
+| `src/lib/renderDevice.ts` | Valor predeterminado GPU y persistencia del renderizador |
 | `src/stores/studioStore.ts` | Documento, revisión, análisis, trabajo y vistas |
 | `src/lib/alphaService.ts` | IPC alfa, previews y exportación |
 | `src/lib/residueService.ts` | IPC de máscara y limpieza |

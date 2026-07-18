@@ -1,6 +1,6 @@
-export type InspectorZoneId = "alpha" | "residue" | "polish";
+export type InspectorZoneId = "properties" | "alpha" | "residue" | "polish";
 
-export const inspectorZones: InspectorZoneId[] = ["alpha", "residue", "polish"];
+export const inspectorZones: InspectorZoneId[] = ["properties", "alpha", "residue", "polish"];
 
 export interface InspectorZoneLayout {
   order: InspectorZoneId[];
@@ -9,7 +9,7 @@ export interface InspectorZoneLayout {
 
 export const defaultInspectorZoneLayout: InspectorZoneLayout = {
   order: [...inspectorZones],
-  collapsed: { alpha: false, residue: true, polish: true },
+  collapsed: { properties: false, alpha: false, residue: true, polish: true },
 };
 
 export function normalizeInspectorZoneLayout(value: unknown): InspectorZoneLayout {
@@ -22,6 +22,7 @@ export function normalizeInspectorZoneLayout(value: unknown): InspectorZoneLayou
   return {
     order,
     collapsed: {
+      properties: typeof candidate.collapsed?.properties === "boolean" ? candidate.collapsed.properties : defaultInspectorZoneLayout.collapsed.properties,
       alpha: typeof candidate.collapsed?.alpha === "boolean" ? candidate.collapsed.alpha : defaultInspectorZoneLayout.collapsed.alpha,
       residue: typeof candidate.collapsed?.residue === "boolean" ? candidate.collapsed.residue : defaultInspectorZoneLayout.collapsed.residue,
       polish: typeof candidate.collapsed?.polish === "boolean" ? candidate.collapsed.polish : defaultInspectorZoneLayout.collapsed.polish,

@@ -19,6 +19,9 @@
 | Pulir borde | `EdgePolish.tsx` | `edge_polish_engine/mod.rs` | tests de pulido |
 | Procesar lote | `BatchPanel.tsx`, `batchService.ts` | comandos de documento/jobs existentes | `batchService.test.ts` |
 | Exportar | `TopBar.tsx`, `alphaService.ts` | `export_verified_as_with_progress`, `start_export_job` | tests de exportación |
+| Elegir GPU/CPU | `UpdatePanel.tsx`, `CanvasWorkspace.tsx`, `StatusBar.tsx` | No aplica; selección del renderizador Pixi | `renderDevice.test.ts`, `types/document.ts` |
+| Crear documento físico | `StartScreen.tsx`, `NewDocumentDialog.tsx`, `createDocument.ts` | No se crea documento Rust hasta colocar imagen | `measurements.test.ts` |
+| Medir y alinear | `CanvasControls.tsx`, `PrecisionOverlay.tsx`, `DocumentPropertiesDialog.tsx` | No aplica; transformaciones y guías de interfaz | `measurements.test.ts` |
 | Trabajos/cancelación | `jobService.ts` | `application/jobs.rs` | test de cancelación |
 | Revisiones | `studioStore.ts` | `application/revisions.rs` | tests de store/revisión |
 | Automatización | `commandBus.ts` | `application/command_bus.rs`, `commands/dispatcher.rs` | test de protocolo |

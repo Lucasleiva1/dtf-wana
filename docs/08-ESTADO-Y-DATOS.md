@@ -14,11 +14,13 @@
 
 ## Estado de interfaz
 
-Zustand guarda el documento visible, análisis, trabajo activo, flujo, preview, cámara, máscara y revisión visual. Cambiar el documento reinicia estados derivados para evitar usar análisis de otra revisión.
+Zustand guarda el documento visible, su mesa, elemento colocado, guías, análisis, trabajo activo, flujo, preview, cámara, máscara, revisión visual, dispositivo de render preferido y backend de render activo. Cambiar el documento reinicia estados derivados para evitar usar análisis de otra revisión.
 
 ## Persistencia
 
-Sólo el orden y colapso de zonas del inspector se persisten en `localStorage` con la clave `dtf-pro-studio.inspector-layout.v1`. No se persisten imágenes, historial, cola, carpetas ni configuración de lote.
+Se persisten en `localStorage` el orden/colapso de zonas del inspector (`dtf-pro-studio.inspector-layout.v1`), el dispositivo de render (`dtf-pro-studio.render-device.v1`) y las preferencias de reglas, guías, bloqueo, imán y guías inteligentes (`dtf.view.*`). La preferencia de render admite `gpu` o `cpu` y usa GPU ante un valor ausente o inválido. No se persisten imágenes, historial, cola, carpetas ni configuración de lote.
+
+La mesa conserva ancho/alto enteros en píxeles, PPP y unidad preferida. El elemento colocado conserva además los PPP de origen. Su tamaño natural dentro de la mesa se calcula como `píxeles de origen × PPP de mesa ÷ PPP de origen`, preservando exactamente los centímetros y sin ajustarlo al artboard. X/Y/ancho/alto se expresan internamente en píxeles flotantes para evitar pérdida acumulada; la interfaz convierte a la unidad elegida. Cambiar PPP sin remuestrear sólo cambia la interpretación física, nunca `source_bytes`, `original` ni `working`. Quitar una imagen deja un documento vacío con la misma mesa y guías.
 
 ## Revisiones y consistencia
 

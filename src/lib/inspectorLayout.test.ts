@@ -4,8 +4,8 @@ import { normalizeInspectorZoneLayout, placeInspectorZone } from "./inspectorLay
 describe("inspector zone layout", () => {
   it("restores missing zones and safe collapse defaults", () => {
     expect(normalizeInspectorZoneLayout({ order: ["residue"], collapsed: { residue: false } })).toEqual({
-      order: ["residue", "alpha", "polish"],
-      collapsed: { alpha: false, residue: false, polish: true },
+      order: ["residue", "properties", "alpha", "polish"],
+      collapsed: { properties: false, alpha: false, residue: false, polish: true },
     });
   });
 

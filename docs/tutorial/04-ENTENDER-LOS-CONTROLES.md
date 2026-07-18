@@ -28,4 +28,14 @@
 
 Puede ajustar, ampliar, reducir y desplazarse. En modo lote, la cola se navega de forma independiente bajo el canvas.
 
+En **Ajustes → Renderizador de imagen**, **GPU** usa WebGL de alto rendimiento y es el valor predeterminado; **CPU** usa Canvas 2D para compatibilidad. El cambio es inmediato, persiste al reiniciar y no altera la imagen ni su revisión.
+
+## Medidas, reglas y guías
+
+La barra contextual y la zona **Propiedades de imagen** muestran X, Y, W, H y rotación sólo cuando el elemento está seleccionado. La unidad se toma de la mesa y puede cambiarse entre px, cm, mm, in, pt y pc. La proporción está bloqueada siempre: los ocho tiradores cuadrados y los campos de ancho o alto nunca deforman la imagen.
+
+Arrastrar desde la regla superior crea una guía horizontal; arrastrar desde la regla lateral crea una vertical. El cero está en el centro exacto de la mesa y la numeración continúa en ambos sentidos hasta el final visible. **Propiedades → Contenido** permite escribir cada posición con tres decimales. Para eliminar una guía, devuélvala a su regla, selecciónela y pulse Supr/Retroceso, o use su menú contextual. **Ajustes → Precisión y ayudas visuales** controla reglas, guías, bloqueo, imán y guías inteligentes.
+
+No hay una cruz central permanente. El centro sólo se indica de forma temporal: la guía manual muestra **0 · centro** al imantarse y, al mover la imagen, aparece una marca violeta corta, sólida y nítida. La herramienta Mano o Espacio desplaza la vista; Selección mueve el elemento, que puede salir de la mesa.
+
 [CAPTURA PENDIENTE: primer plano de cada bloque con los controles etiquetados]

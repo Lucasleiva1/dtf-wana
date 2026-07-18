@@ -4,7 +4,10 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { FileImage, LoaderCircle } from "lucide-react";
 import { CanvasWorkspace } from "../canvas/CanvasWorkspace";
 import { CanvasControls } from "../components/CanvasControls";
+import { DocumentPropertiesDialog } from "../components/DocumentPropertiesDialog";
 import { Inspector } from "../components/Inspector";
+import { NewDocumentDialog } from "../components/NewDocumentDialog";
+import { StartScreen } from "../components/StartScreen";
 import { StatusBar } from "../components/StatusBar";
 import { ToolRail } from "../components/ToolRail";
 import { TopBar } from "../components/TopBar";
@@ -16,6 +19,8 @@ import { useStudioStore } from "../stores/studioStore";
 import { closeEngineDocument, importDroppedImagePath, importImageFile } from "./importImage";
 import { cancelJob } from "../lib/jobService";
 import { editResidueMask, refreshResiduePreview } from "../lib/residueService";
+import { createEmptyDocument } from "./createDocument";
+import { documentWithoutPlacedImage, placeImageOnExistingArtboard } from "./documentPlacement";
 
 export function App() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -26,8 +31,12 @@ export function App() {
   const [importingImage, setImportingImage] = useState(false);
   const [system, setSystem] = useState<SystemCapabilities | null>(null);
   const [batchOpen, setBatchOpen] = useState(false);
+  const [newDocumentOpen, setNewDocumentOpen] = useState(false);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [showStart, setShowStart] = useState(true);
   const batch = useBatchController();
   const setDocument = useStudioStore((state) => state.setDocument);
+  const currentDocument = useStudioStore((state) => state.document);
   const notification = useStudioStore((state) => state.notification);
   const setNotification = useStudioStore((state) => state.setNotification);
   const setModule = useStudioStore((state) => state.setModule);
@@ -51,12 +60,23 @@ export function App() {
     try {
       await cancelRunningJob();
       const previous = useStudioStore.getState().document;
-      const next = await loader();
+      const imported = await loader();
+      const next = previous?.artboard ? placeImageOnExistingArtboard(imported, previous) : imported;
       setDocument(next);
-      if (previous) void closeEngineDocument(previous.id).catch(() => {
+      setShowStart(false);
+      if (previous && previous.engineReady !== false) void closeEngineDocument(previous.id).catch(() => {
         setNotification({ kind: "error", text: "La imagen cambió, pero no se pudo liberar el documento anterior del motor." });
       });
-      setNotification({ kind: "success", text: previous ? `Imagen reemplazada por ${next.name}.` : `${next.name} abierta correctamente.` });
+      const sourcePpi = next.placedImage?.sourcePpi;
+      const targetPpi = next.artboard?.ppi ?? 300;
+      const resolutionNotice = next.ppiAssumed
+        ? "El archivo no informa PPP. Revisá Propiedades de imagen para asignar 300 PPP sin inventar píxeles."
+        : sourcePpi && Math.abs(sourcePpi - targetPpi) > 0.01
+          ? `La imagen informa ${sourcePpi} PPP y la mesa usa ${targetPpi} PPP. Convertí explícitamente desde Propiedades de imagen.`
+          : null;
+      setNotification(resolutionNotice
+        ? { kind: "info", text: resolutionNotice }
+        : { kind: "success", text: previous ? `Imagen reemplazada por ${next.name}.` : `${next.name} abierta correctamente a ${targetPpi} PPP.` });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo abrir la imagen.");
     } finally {
@@ -68,12 +88,13 @@ export function App() {
 
   const removeImage = useCallback(async () => {
     const current = useStudioStore.getState().document;
-    if (!current) return;
+    if (!current?.placedImage) return;
     await cancelRunningJob();
-    setDocument(null);
+    setDocument(documentWithoutPlacedImage(current));
+    setShowStart(false);
     try {
-      await closeEngineDocument(current.id);
-      setNotification({ kind: "info", text: "Imagen quitada del espacio de trabajo. El archivo original no fue borrado del disco." });
+      if (current.engineReady !== false) await closeEngineDocument(current.id);
+      setNotification({ kind: "info", text: "Imagen quitada. La mesa y sus medidas se conservaron; podés abrir otra imagen." });
     } catch (reason) {
       setNotification({ kind: "error", text: reason instanceof Error ? reason.message : String(reason) });
     }
@@ -107,6 +128,7 @@ export function App() {
       const target = event.target as HTMLElement;
       if (target.matches("input, textarea, select")) return;
       if (event.ctrlKey && event.key.toLowerCase() === "o") { event.preventDefault(); open(); }
+      if (event.ctrlKey && event.key.toLowerCase() === "n") { event.preventDefault(); setNewDocumentOpen(true); }
       const state = useStudioStore.getState();
       const editMaskHistory = async (action: "undo" | "redo") => {
         const latest = useStudioStore.getState();
@@ -116,12 +138,13 @@ export function App() {
       };
       if (event.ctrlKey && event.key.toLowerCase() === "z") {
         event.preventDefault();
-        if (state.residueMask.canUndo) void editMaskHistory("undo"); else void changePixelHistory("undo");
+        if (state.transformPast.length) state.undoPlacedImageTransform(); else if (state.residueMask.canUndo) void editMaskHistory("undo"); else void changePixelHistory("undo");
       }
       if (event.ctrlKey && event.key.toLowerCase() === "y") {
         event.preventDefault();
-        if (state.residueMask.canRedo) void editMaskHistory("redo"); else void changePixelHistory("redo");
+        if (state.transformFuture.length) state.redoPlacedImageTransform(); else if (state.residueMask.canRedo) void editMaskHistory("redo"); else void changePixelHistory("redo");
       }
+      if ((event.key === "Delete" || event.key === "Backspace") && state.selectedGuideId) return;
       if ((event.key === "Delete" || event.key === "Backspace") && state.residueMask.hasSelection) {
         event.preventDefault();
         window.dispatchEvent(new CustomEvent("dtf:apply-residue"));
@@ -170,10 +193,27 @@ export function App() {
     if (file) void installImage(() => importImageFile(file));
   };
 
+  const createDocument = (values: Parameters<typeof createEmptyDocument>[0]) => {
+    const previous = useStudioStore.getState().document;
+    if (previous && previous.engineReady !== false) void closeEngineDocument(previous.id).catch(() => undefined);
+    setDocument(createEmptyDocument(values));
+    setShowStart(false);
+    setNewDocumentOpen(false);
+    setNotification({ kind: "success", text: `Documento ${values.width} × ${values.height} ${values.unit} creado a ${values.ppi} PPP.` });
+  };
+
+  if (showStart && !currentDocument) return <div className="start-shell" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <input ref={inputRef} className="visually-hidden" type="file" accept=".png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,image/*" onChange={onFile} />
+    <StartScreen onNew={() => setNewDocumentOpen(true)} onOpen={open} />
+    {newDocumentOpen && <NewDocumentDialog onClose={() => setNewDocumentOpen(false)} onCreate={createDocument} />}
+    {importingImage && <div className="image-import-indicator"><LoaderCircle className="spin" size={16} /> Preparando imagen…</div>}
+    {error && <div className="toast error" role="alert"><span>{error}</span><button onClick={() => setError(null)}>×</button></div>}
+  </div>;
+
   return (
     <div className={`studio-shell${dropActive ? " file-drop-active" : ""}${batchOpen ? " batch-open" : ""}${batch.running ? " batch-running" : ""}`} onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <input ref={inputRef} className="visually-hidden" type="file" accept=".png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,image/*" onChange={onFile} />
-      <TopBar onOpen={open} onRemove={() => void removeImage()} onBatch={() => {
+      <TopBar onNew={() => setNewDocumentOpen(true)} onOpen={open} onRemove={() => void removeImage()} onProperties={() => setPropertiesOpen(true)} onBatch={() => {
         if (batch.running) return;
         setBatchOpen((current) => {
           if (!current) setModule("transparency");
@@ -192,6 +232,8 @@ export function App() {
       {importingImage && <div className="image-import-indicator"><LoaderCircle className="spin" size={16} /> Preparando imagen…</div>}
       {error && <div className="toast error" role="alert"><span>{error}</span><button onClick={() => setError(null)}>×</button></div>}
       {notification && <div className={`toast ${notification.kind}`} role="status"><span>{notification.text}</span><button onClick={() => setNotification(null)}>×</button></div>}
+      {newDocumentOpen && <NewDocumentDialog onClose={() => setNewDocumentOpen(false)} onCreate={createDocument} />}
+      {propertiesOpen && <DocumentPropertiesDialog onClose={() => setPropertiesOpen(false)} />}
       {activeJob && (activeJob.status === "queued" || activeJob.status === "running") && <div className="global-job-progress"><JobProgress job={activeJob} onCancel={() => void cancelJob(activeJob.id)} /></div>}
     </div>
   );
