@@ -23,6 +23,7 @@ import { ResidueCleanup } from "./ResidueCleanup";
 import { EdgePolish } from "./EdgePolish";
 import { BatchSetupPanel, type BatchController } from "./BatchPanel";
 import { BackgroundRemovalInspector } from "../features/background-removal/components/BackgroundRemovalInspector";
+import { requestDocumentExport } from "../lib/documentExportRequest";
 
 const tabs: Array<[ModuleId, string]> = [["background", "Quitar fondo"], ["transparency", "Transparencias"], ["separation", "Separar"]];
 const number = new Intl.NumberFormat("es-AR");
@@ -46,7 +47,7 @@ export function Inspector({ batchMode = false, batch, onExitBatch }: { batchMode
   const activeModule = useStudioStore((state) => state.activeModule);
   const setModule = useStudioStore((state) => state.setModule);
   const document = useStudioStore((state) => state.document);
-  if (document?.engineReady === false) return <aside className="inspector empty-document-inspector"><ModulePlaceholder icon={<Layers3 size={24} />} title="Mesa vacía" text="Abrí o arrastrá una imagen para colocarla. Las medidas, reglas y guías ya están activas." /></aside>;
+  if (!batchMode && document?.engineReady === false) return <aside className="inspector empty-document-inspector"><ModulePlaceholder icon={<Layers3 size={24} />} title="Mesa vacía" text="Abrí o arrastrá una imagen para colocarla. Las medidas, reglas y guías ya están activas." /></aside>;
   return (
     <aside className={`inspector module-${activeModule}`}>
       <div className="module-tabs" role="tablist" aria-label="Módulos">
@@ -236,6 +237,12 @@ function TransparencyInspector({ batch, onExitBatch }: { batch?: BatchController
     setImpact(null);
   };
 
+  const applyProtectionPreset = (preset: "protect" | "none") => {
+    setProtections((current) => protectionPreset(preset, current.preservedRegionIds));
+    setPreviewDirty(true);
+    setImpact(null);
+  };
+
   const preserveCurrentRegion = () => {
     const region = analysis?.regions[regionIndex];
     if (!region) return;
@@ -362,105 +369,115 @@ function TransparencyInspector({ batch, onExitBatch }: { batch?: BatchController
 
       <section>
         <div className="section-title"><span>ANÁLISIS DE TRANSPARENCIA</span><ScanSearch size={14} /></div>
-        {document ? <dl className="metrics compact">
-          <div><dt>Imagen</dt><dd>{number.format(document.width)} × {number.format(document.height)}</dd></div>
-          <div><dt>Semitransparentes</dt><dd className={analysis?.partialAlphaPixels ? "alpha-text" : "success-text"}>{analysis ? number.format(analysis.partialAlphaPixels) : "Sin analizar"}</dd></div>
-          <div><dt>Zonas</dt><dd>{analysis ? number.format(analysis.affectedRegions) : "—"}</dd></div>
-          <div><dt>Profundidad</dt><dd>{analysis?.bitDepth ?? document.bitDepth} bits</dd></div>
-        </dl> : <p className="muted">Abrí una imagen para comenzar.</p>}
         <button className="primary-action" disabled={!document || busy} onClick={analyze}>
           {flow === "analyzing" ? <><LoaderCircle className="spin" size={14} /> ANALIZANDO…</> : "ANALIZAR ALFA"}
         </button>
         {error && <p className="inline-error">{error}</p>}
+        {analysis && document && <AdvancedOptions label="Avanzado del análisis">
+          <dl className="metrics compact">
+            <div><dt>Imagen</dt><dd>{number.format(document.width)} × {number.format(document.height)}</dd></div>
+            <div><dt>Semitransparentes</dt><dd className={analysis.partialAlphaPixels ? "alpha-text" : "success-text"}>{number.format(analysis.partialAlphaPixels)}</dd></div>
+            <div><dt>Zonas</dt><dd>{number.format(analysis.affectedRegions)}</dd></div>
+            <div><dt>Profundidad</dt><dd>{analysis.bitDepth} bits</dd></div>
+          </dl>
+          <div className="advanced-subsection">
+            <div className="section-title"><span>HISTOGRAMA ALFA · {analysis.bitDepth} BITS</span><ChevronRight size={14} /></div>
+            <Histogram bins={analysis.histogram} />
+            <div className="histogram-range"><span>Transparente</span><span>Opaco</span></div>
+          </div>
+        </AdvancedOptions>}
       </section>
-
-      {analysis && <section>
-        <div className="section-title"><span>HISTOGRAMA ALFA · {analysis.bitDepth} BITS</span><ChevronRight size={14} /></div>
-        <Histogram bins={analysis.histogram} />
-        <div className="histogram-range"><span>Transparente</span><span>Opaco</span></div>
-      </section>}
 
       {analysis?.verifiedSolidAlpha && <ZeroAlphaState visualReviewed={visualReviewed} onReviewed={(checked) => {
         setVisualReviewed(checked);
         setVisualReviewComplete(checked);
         setFlow(checked ? "ready_to_export" : "visual_review");
-      }} onView={(mode) => void changePreview(mode)} />}
+      }} onView={(mode) => void changePreview(mode)} onExport={requestDocumentExport} />}
 
       {analysis && !analysis.verifiedSolidAlpha && recommendation && <>
-        <section className="recommendation-card">
-          <div className="section-title"><span>RECOMENDACIÓN</span><Sparkles size={14} /></div>
-          <div className="recommendation-head"><strong>{recommendation.recommendedThreshold}</strong><RiskBadge risk={recommendation.risk} /></div>
-          <p>{recommendation.explanation}</p>
-          <dl className="impact-grid">
-            <div><dt>Rango seguro</dt><dd>{recommendation.safeMin}–{recommendation.safeMax}</dd></div>
-            <div><dt>Borde afectado</dt><dd>{recommendation.edgeAffectedPercent.toFixed(1)} %</dd></div>
-            <div><dt>Detalle fino</dt><dd>{number.format(recommendation.fineDetailPixels)} px</dd></div>
-            <div><dt>Radio automático</dt><dd>{recommendation.recommendedRadius} px</dd></div>
-            <div className="red"><dt>Serán transparentes</dt><dd>{number.format(recommendation.estimatedTransparent)}</dd></div>
-            <div className="cyan"><dt>Serán opacos</dt><dd>{number.format(recommendation.estimatedOpaque)}</dd></div>
-          </dl>
-          <div className="preset-buttons">
-            {[recommendation.conservative, recommendation.balanced, recommendation.aggressive].map((preset) => (
-              <button key={preset.name} className={threshold === preset.threshold ? "active" : ""} title={preset.description} onClick={() => usePreset(preset.threshold)}>{preset.name}<b>{preset.threshold}</b></button>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <div className="section-title"><span>¿QUÉ SE CONSERVA?</span><ShieldCheck size={14} /></div>
-          <div className="threshold-explanation"><span>Se vuelve transparente</span><span>Se vuelve opaco</span></div>
-          <div className="threshold-control" style={{ "--recommendation": `${recommendationPosition}%`, "--safe-start": `${safeStart}%`, "--safe-end": `${safeEnd}%` } as React.CSSProperties}>
-            <div className="risk-track"><i /><b /></div>
-            <input aria-label="Umbral de transparencia" type="range" min="1" max={analysis.maxAlpha - 1} value={threshold} onChange={(event) => { setThreshold(Number(event.target.value)); setPreviewDirty(true); setImpact(null); }} />
-          </div>
-          <label className="numeric-threshold">Valor editable<input type="number" min="1" max={analysis.maxAlpha - 1} value={threshold} onChange={(event) => { setThreshold(Math.max(1, Math.min(analysis.maxAlpha - 1, Number(event.target.value)))); setPreviewDirty(true); setImpact(null); }} /></label>
-          <small className="microcopy">Menor valor conserva más detalle. Mayor valor elimina más borde tenue.</small>
-        </section>
-
-        <section>
+        <section className="protection-quick-section">
           <div className="section-title"><span>PROTECCIÓN DE DETALLES</span><ShieldCheck size={14} /></div>
-          <Check label="Proteger textura conectada" checked={protections.protectConnectedTexture} onChange={(value) => setProtection("protectConnectedTexture", value)} />
-          <Check label="Proteger líneas finas" checked={protections.protectFineLines} onChange={(value) => setProtection("protectFineLines", value)} />
-          <Check label="Proteger grunge" checked={protections.protectGrunge} onChange={(value) => setProtection("protectGrunge", value)} />
-          <Check label="Eliminar solamente partículas aisladas" checked={protections.onlyIsolatedParticles} onChange={(value) => setProtection("onlyIsolatedParticles", value)} />
-          <div className="region-nav">
-            <button onClick={() => navigate(-1)}><ChevronLeft size={15} /></button>
-            <span>Zona {regionIndex + 1} de {analysis.regions.length}</span>
-            <button onClick={() => navigate(1)}><ChevronRight size={15} /></button>
-          </div>
-          <button className="secondary-action" onClick={preserveCurrentRegion}>{protections.preservedRegionIds.includes(analysis.regions[regionIndex]?.id) ? "Dejar de conservar esta zona" : "Conservar esta zona manualmente"}</button>
-          {protections.preservedRegionIds.length > 0 && <small className="microcopy">{protections.preservedRegionIds.length} regiones marcadas para conservar.</small>}
+          <ProtectionQuickControls protections={protections} onSelect={applyProtectionPreset} />
+          <AdvancedOptions label="Avanzado de protección">
+            <Check label="Proteger textura conectada" checked={protections.protectConnectedTexture} onChange={(value) => setProtection("protectConnectedTexture", value)} />
+            <Check label="Proteger líneas finas" checked={protections.protectFineLines} onChange={(value) => setProtection("protectFineLines", value)} />
+            <Check label="Proteger grunge" checked={protections.protectGrunge} onChange={(value) => setProtection("protectGrunge", value)} />
+            <Check label="Eliminar solamente partículas aisladas" checked={protections.onlyIsolatedParticles} onChange={(value) => setProtection("onlyIsolatedParticles", value)} />
+            <div className="region-nav">
+              <button onClick={() => navigate(-1)}><ChevronLeft size={15} /></button>
+              <span>Zona {regionIndex + 1} de {analysis.regions.length}</span>
+              <button onClick={() => navigate(1)}><ChevronRight size={15} /></button>
+            </div>
+            <button className="secondary-action" onClick={preserveCurrentRegion}>{protections.preservedRegionIds.includes(analysis.regions[regionIndex]?.id) ? "Dejar de conservar esta zona" : "Conservar esta zona manualmente"}</button>
+            {protections.preservedRegionIds.length > 0 && <small className="microcopy">{protections.preservedRegionIds.length} regiones marcadas para conservar.</small>}
+          </AdvancedOptions>
         </section>
 
-        <section>
-          <div className="section-title"><span>RECONSTRUCCIÓN DE BORDES</span><ChevronRight size={14} /></div>
-          <div className="segmented reconstruction-modes">
-            <button className={reconstructionMode === "automatic" ? "active" : ""} onClick={() => { setReconstructionMode("automatic"); setPreviewDirty(true); }}>Automático</button>
-            <button className={reconstructionMode === "manual" ? "active" : ""} onClick={() => { setReconstructionMode("manual"); setPreviewDirty(true); }}>Manual</button>
-          </div>
-          {reconstructionMode === "automatic" ? <p className="microcopy">Radio adaptativo estimado: <b>{recommendation.recommendedRadius} px</b>. Se limita para evitar halos.</p> : <label className="field-label">Radio manual: {radius} px<input type="range" min="1" max="16" value={radius} onChange={(event) => { setRadius(Number(event.target.value)); setPreviewDirty(true); setImpact(null); }} /></label>}
-          <p className="microcopy">Riesgo de contaminación: <RiskBadge risk={impact?.contaminationRisk ?? recommendation.contaminationRisk} /></p>
+        <section className="advanced-treatment-section">
+          <AdvancedOptions label="Opciones avanzadas de tratamiento">
+            <div className="advanced-subsection recommendation-card">
+              <div className="section-title"><span>RECOMENDACIÓN</span><Sparkles size={14} /></div>
+              <div className="recommendation-head"><strong>{recommendation.recommendedThreshold}</strong><RiskBadge risk={recommendation.risk} /></div>
+              <p>{recommendation.explanation}</p>
+              <dl className="impact-grid">
+                <div><dt>Rango seguro</dt><dd>{recommendation.safeMin}–{recommendation.safeMax}</dd></div>
+                <div><dt>Borde afectado</dt><dd>{recommendation.edgeAffectedPercent.toFixed(1)} %</dd></div>
+                <div><dt>Detalle fino</dt><dd>{number.format(recommendation.fineDetailPixels)} px</dd></div>
+                <div><dt>Radio automático</dt><dd>{recommendation.recommendedRadius} px</dd></div>
+                <div className="red"><dt>Serán transparentes</dt><dd>{number.format(recommendation.estimatedTransparent)}</dd></div>
+                <div className="cyan"><dt>Serán opacos</dt><dd>{number.format(recommendation.estimatedOpaque)}</dd></div>
+              </dl>
+              <div className="preset-buttons">
+                {[recommendation.conservative, recommendation.balanced, recommendation.aggressive].map((preset) => (
+                  <button key={preset.name} className={threshold === preset.threshold ? "active" : ""} title={preset.description} onClick={() => usePreset(preset.threshold)}>{preset.name}<b>{preset.threshold}</b></button>
+                ))}
+              </div>
+            </div>
+
+            <div className="advanced-subsection">
+              <div className="section-title"><span>UMBRAL DE CONSERVACIÓN</span><ShieldCheck size={14} /></div>
+              <div className="threshold-explanation"><span>Se vuelve transparente</span><span>Se vuelve opaco</span></div>
+              <div className="threshold-control" style={{ "--recommendation": `${recommendationPosition}%`, "--safe-start": `${safeStart}%`, "--safe-end": `${safeEnd}%` } as React.CSSProperties}>
+                <div className="risk-track"><i /><b /></div>
+                <input aria-label="Umbral de transparencia" type="range" min="1" max={analysis.maxAlpha - 1} value={threshold} onChange={(event) => { setThreshold(Number(event.target.value)); setPreviewDirty(true); setImpact(null); }} />
+              </div>
+              <label className="numeric-threshold">Valor editable<input type="number" min="1" max={analysis.maxAlpha - 1} value={threshold} onChange={(event) => { setThreshold(Math.max(1, Math.min(analysis.maxAlpha - 1, Number(event.target.value)))); setPreviewDirty(true); setImpact(null); }} /></label>
+              <small className="microcopy">Menor valor conserva más detalle. Mayor valor elimina más borde tenue.</small>
+            </div>
+
+            <div className="advanced-subsection">
+              <div className="section-title"><span>RECONSTRUCCIÓN DE BORDES</span><ChevronRight size={14} /></div>
+              <div className="segmented reconstruction-modes">
+                <button className={reconstructionMode === "automatic" ? "active" : ""} onClick={() => { setReconstructionMode("automatic"); setPreviewDirty(true); }}>Automático</button>
+                <button className={reconstructionMode === "manual" ? "active" : ""} onClick={() => { setReconstructionMode("manual"); setPreviewDirty(true); }}>Manual</button>
+              </div>
+              {reconstructionMode === "automatic" ? <p className="microcopy">Radio adaptativo estimado: <b>{recommendation.recommendedRadius} px</b>. Se limita para evitar halos.</p> : <label className="field-label">Radio manual: {radius} px<input type="range" min="1" max="16" value={radius} onChange={(event) => { setRadius(Number(event.target.value)); setPreviewDirty(true); setImpact(null); }} /></label>}
+              <p className="microcopy">Riesgo de contaminación: <RiskBadge risk={impact?.contaminationRisk ?? recommendation.contaminationRisk} /></p>
+            </div>
+          </AdvancedOptions>
         </section>
 
-        <section>
-          <div className="section-title"><span>PREVISUALIZACIÓN DE IMPACTO</span><Eye size={14} /></div>
-          <div className="impact-legend"><span className="red">Transparente</span><span className="cyan">Opaco</span><span className="magenta">Protegido/pendiente</span></div>
-          <div className="segmented preview-modes">
-            <button className={previewMode === "original" ? "active" : ""} onClick={() => void changePreview("original")}>Antes</button>
-            <button className={previewMode === "impact_overlay" ? "active" : ""} disabled={!impactBlob} onClick={() => void changePreview("impact_overlay")}>Impacto</button>
-            <button className={previewMode === "result" ? "active" : ""} onClick={() => void changePreview("result")}>Resultado</button>
-            <button className={previewMode === "alpha" ? "active" : ""} onClick={() => void changePreview("alpha")}>Canal alfa</button>
-          </div>
+        <section className="preview-primary-section">
+          <div className="section-title"><span>PREVISUALIZACIÓN DEL RESULTADO</span><Eye size={14} /></div>
           <button className="primary-action" disabled={busy} onClick={() => void previewImpact()}>PREVISUALIZAR RESULTADO</button>
           <button className="hold-compare" disabled={!impactBlob} onPointerDown={() => compare(true)} onPointerUp={() => compare(false)} onPointerLeave={() => compare(false)}><Pause size={13} /> Mantener presionado para ver Antes</button>
-          {impact && <dl className="impact-summary">
-            <div className="red"><dt>Desaparecerán</dt><dd>{number.format(impact.willBecomeTransparent)}</dd></div>
-            <div className="cyan"><dt>Serán opacos</dt><dd>{number.format(impact.willBecomeOpaque)}</dd></div>
-            <div className="magenta"><dt>Protegidos</dt><dd>{number.format(impact.protectedPixels)}</dd></div>
-            <div><dt>Borde afectado</dt><dd>{impact.edgeAffectedPercent.toFixed(1)} %</dd></div>
-            <div><dt>Reconstruidos</dt><dd>{number.format(impact.reconstructedPixels)}</dd></div>
-            <div><dt>Pendientes</dt><dd>{number.format(impact.pendingPixels)}</dd></div>
-          </dl>}
+          <AdvancedOptions label="Avanzado de previsualización">
+            <div className="impact-legend"><span className="red">Transparente</span><span className="cyan">Opaco</span><span className="magenta">Protegido/pendiente</span></div>
+            <div className="segmented preview-modes">
+              <button className={previewMode === "original" ? "active" : ""} onClick={() => void changePreview("original")}>Antes</button>
+              <button className={previewMode === "impact_overlay" ? "active" : ""} disabled={!impactBlob} onClick={() => void changePreview("impact_overlay")}>Impacto</button>
+              <button className={previewMode === "result" ? "active" : ""} onClick={() => void changePreview("result")}>Resultado</button>
+              <button className={previewMode === "alpha" ? "active" : ""} onClick={() => void changePreview("alpha")}>Canal alfa</button>
+            </div>
+            {impact && <dl className="impact-summary">
+              <div className="red"><dt>Desaparecerán</dt><dd>{number.format(impact.willBecomeTransparent)}</dd></div>
+              <div className="cyan"><dt>Serán opacos</dt><dd>{number.format(impact.willBecomeOpaque)}</dd></div>
+              <div className="magenta"><dt>Protegidos</dt><dd>{number.format(impact.protectedPixels)}</dd></div>
+              <div><dt>Borde afectado</dt><dd>{impact.edgeAffectedPercent.toFixed(1)} %</dd></div>
+              <div><dt>Reconstruidos</dt><dd>{number.format(impact.reconstructedPixels)}</dd></div>
+              <div><dt>Pendientes</dt><dd>{number.format(impact.pendingPixels)}</dd></div>
+            </dl>}
+          </AdvancedOptions>
         </section>
 
         <section>
@@ -571,6 +588,39 @@ function BatchAlphaOptions({ batch }: { batch: BatchController }) {
   </fieldset>;
 }
 
+export function protectionPreset(preset: "protect" | "none", preservedRegionIds: string[] = []): ProtectionOptions {
+  return {
+    protectConnectedTexture: preset === "protect",
+    protectFineLines: preset === "protect",
+    protectGrunge: preset === "protect",
+    onlyIsolatedParticles: false,
+    preservedRegionIds: preset === "protect" ? preservedRegionIds : [],
+  };
+}
+
+export function ProtectionQuickControls({ protections, onSelect }: { protections: ProtectionOptions; onSelect: (preset: "protect" | "none") => void }) {
+  const protectsDetails = protections.protectConnectedTexture
+    && protections.protectFineLines
+    && protections.protectGrunge
+    && !protections.onlyIsolatedParticles;
+  const protectsNothing = !protections.protectConnectedTexture
+    && !protections.protectFineLines
+    && !protections.protectGrunge
+    && !protections.onlyIsolatedParticles
+    && protections.preservedRegionIds.length === 0;
+  return <div className="protection-quick-controls" role="group" aria-label="Protección rápida de detalles">
+    <button className={protectsDetails ? "active" : ""} onClick={() => onSelect("protect")}><ShieldCheck size={14} /><span><b>Proteger detalles</b><small>Texturas, líneas y grunge</small></span></button>
+    <button className={protectsNothing ? "active" : ""} onClick={() => onSelect("none")}><X size={14} /><span><b>No proteger nada</b><small>Procesar sin protecciones</small></span></button>
+  </div>;
+}
+
+export function AdvancedOptions({ label, children }: { label: string; children: React.ReactNode }) {
+  return <details className="advanced-options">
+    <summary><span>{label}</span><ChevronRight size={14} /></summary>
+    <div className="advanced-options-body">{children}</div>
+  </details>;
+}
+
 function FlowStatus({ flow }: { flow: string }) {
   const labels: Record<string, string> = {
     unprocessed: "Sin analizar", analyzing: "Analizando", analysis_complete: "Análisis terminado",
@@ -593,13 +643,15 @@ export function JobProgress({ job, onCancel }: { job: JobSnapshot; onCancel: () 
   </section>;
 }
 
-function ZeroAlphaState({ visualReviewed, onReviewed, onView }: { visualReviewed: boolean; onReviewed: (checked: boolean) => void; onView: (mode: PreviewMode) => void }) {
+export function ZeroAlphaState({ visualReviewed, onReviewed, onView, onExport }: { visualReviewed: boolean; onReviewed: (checked: boolean) => void; onView: (mode: PreviewMode) => void; onExport: () => void }) {
   return <>
     <section className="zero-alpha-state"><CircleCheck size={24} /><div><b>No hay semitransparencias pendientes</b><span>Verificación técnica: alfa únicamente 0 u opaco.</span></div></section>
     <section><div className="section-title"><span>REVISIÓN VISUAL</span><Eye size={14} /></div>
       <div className="segmented preview-modes"><button onClick={() => onView("original")}>Original</button><button onClick={() => onView("result")}>Resultado</button><button onClick={() => onView("alpha")}>Canal alfa</button><button onClick={() => onView("partial_overlay")}>Comprobar magenta</button></div>
       <Check label="Revisé los bordes sobre fondos claros y oscuros" checked={visualReviewed} onChange={onReviewed} />
-      <div className={visualReviewed ? "ready-export" : "review-pending"}>{visualReviewed ? "Listo para exportar" : "Revisión visual pendiente"}</div>
+      {visualReviewed
+        ? <button className="ready-export" onClick={onExport}>Listo para exportar</button>
+        : <div className="review-pending">Revisión visual pendiente</div>}
     </section>
   </>;
 }

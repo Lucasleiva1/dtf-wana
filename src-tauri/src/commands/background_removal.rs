@@ -430,8 +430,8 @@ fn available_output_path(path: &Path) -> PathBuf {
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("imagen_sin_fondo");
-    for index in 2..=10_000 {
-        let candidate = parent.join(format!("{stem}_{index}.png"));
+    for index in 1..=10_000 {
+        let candidate = parent.join(format!("{stem} ({index}).png"));
         if !candidate.exists() {
             return candidate;
         }
@@ -481,4 +481,23 @@ fn background_model_path(app: &tauri::AppHandle) -> Option<PathBuf> {
                 })
                 .unwrap_or(false)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn background_export_uses_parenthesized_suffix_without_overwriting() {
+        let directory = std::env::temp_dir().join(format!(
+            "dtf-background-export-path-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let requested = directory.join("DTF_12345678.png");
+        std::fs::write(&requested, b"existing").unwrap();
+        let available = available_output_path(&requested);
+        assert_eq!(available.file_name().unwrap(), "DTF_12345678 (1).png");
+        let _ = std::fs::remove_dir_all(directory);
+    }
 }

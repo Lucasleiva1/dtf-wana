@@ -32,4 +32,6 @@ flowchart TD
 
 PNG incluye densidad de píxeles calculada desde PPP (1..2400) y perfil sRGB perceptual. En otros formatos el valor PPP aparece en el resultado del trabajo, pero la implementación no lo incrusta explícitamente.
 
+La exportación individual propone `DTF_########.png`, con ocho dígitos no repetidos durante la sesión. Si la ruta ya existe, el backend conserva el archivo anterior y elige `DTF_######## (1).png`, luego `(2)`, etc.
+
 En lote, `avoidOverwrite=true` busca `<base>_dtf.ext`, luego un nombre con sufijo disponible. Una carpeta de salida común aplana las subcarpetas.

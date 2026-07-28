@@ -6,6 +6,7 @@ import { dispatchCommand } from "./commandBus";
 import { runExportJob } from "./jobService";
 import type { JobSnapshot } from "../types/alpha";
 import { rgbaBytesToBitmap } from "./bitmapService";
+import { createDtfExportFileName } from "./exportFileName";
 
 export type ImportedEngineDocument = {
   documentId: string;
@@ -56,13 +57,12 @@ export async function getDocumentPreview(document: Pick<StudioDocument, "id" | "
 
 export async function exportVerifiedDocument(document: StudioDocument, onProgress?: (job: JobSnapshot<ExportVerification>) => void): Promise<ExportVerification | null> {
   if (!window.__TAURI_INTERNALS__) throw new Error("La exportación verificada requiere la aplicación de escritorio.");
-  const baseName = document.name.replace(/\.[^.]+$/, "");
   let path = await save({
     title: "Exportar PNG verificado para DTF",
-    defaultPath: `${baseName}_dtf.png`,
+    defaultPath: createDtfExportFileName(),
     filters: [{ name: "PNG RGBA sin pérdida", extensions: ["png"] }],
   });
   if (!path) return null;
   if (!path.toLowerCase().endsWith(".png")) path += ".png";
-  return runExportJob(document, path, onProgress ?? (() => {}));
+  return runExportJob(document, path, onProgress ?? (() => {}), { avoidOverwrite: true });
 }

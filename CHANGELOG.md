@@ -4,10 +4,22 @@ Este archivo registra cambios confirmados en el repositorio. Para publicar una v
 
 ## [Sin publicar]
 
+## [0.4.6] - 2026-07-28
+
 ### Desarrollo
 
 - Se incorporó un comando único y documentado para validar, firmar, publicar y
   verificar futuras versiones estables usando la clave local ya instalada.
+
+### Interfaz
+
+- El modo lote puede abrirse sin una imagen previa y mantiene visibles sus opciones laterales; la franja inferior vacía permite agregar directamente la carpeta de entrada.
+- La carpeta elegida como entrada se completa también como salida inicial. Las miniaturas ya no se desplazan arrastrando con el mouse y se recorren únicamente con las flechas laterales.
+- Transparencias presenta un recorrido compacto de analizar, elegir protección, previsualizar y aplicar; las métricas y configuraciones secundarias permanecen disponibles en desplegables avanzados.
+- Protección de detalles incorpora las acciones rápidas **Proteger detalles** y **No proteger nada**, equivalentes a combinaciones de los controles existentes.
+- El comparador **Mantener presionado para ver Antes** permanece visible entre la previsualización principal y sus opciones avanzadas.
+- **Listo para exportar** en la revisión visual es ahora una segunda entrada al mismo flujo del botón **Exportar** superior.
+- La exportación individual propone nombres `DTF_########.png` no repetidos durante la sesión y evita sobrescrituras mediante sufijos `(1)`, `(2)`, etc.
 
 ## [0.4.5] - 2026-07-18
 

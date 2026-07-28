@@ -6,6 +6,7 @@ import { useStudioStore } from "../stores/studioStore";
 import { UpdatePanel } from "./UpdatePanel";
 import { exportBackgroundResult, redoBackgroundMask, undoBackgroundMask } from "../features/background-removal/commands/backgroundRemovalService";
 import { useBackgroundRemovalStore } from "../features/background-removal/state/backgroundRemovalStore";
+import { useDocumentExportRequest } from "../lib/documentExportRequest";
 
 export function TopBar({ onNew, onOpen, onRemove, onProperties, onBatch, importingImage = false, batchMode = false, batchRunning = false }: { onNew: () => void; onOpen: () => void; onRemove: () => void; onProperties: () => void; onBatch: () => void; importingImage?: boolean; batchMode?: boolean; batchRunning?: boolean }) {
   const history = useStudioStore((state) => state.history);
@@ -39,7 +40,7 @@ export function TopBar({ onNew, onOpen, onRemove, onProperties, onBatch, importi
   const setSmartGuidesEnabled = useStudioStore((state) => state.setSmartGuidesEnabled);
   const clearGuides = useStudioStore((state) => state.clearGuides);
   const exportDocument = async () => {
-    if (!document) return;
+    if (!document || exporting) return;
     if (!selectedItemId) {
       setNotification({ kind: "info", text: "Seleccioná la imagen con un clic antes de exportar." });
       return;
@@ -81,6 +82,7 @@ export function TopBar({ onNew, onOpen, onRemove, onProperties, onBatch, importi
       setNotification({ kind: "error", text: reason instanceof Error ? reason.message : String(reason) });
     } finally { setExporting(false); }
   };
+  useDocumentExportRequest(() => void exportDocument());
   return <>
     <header className="topbar">
       <div className="brand"><span className="brand-mark">D</span><b>DTF Pro Studio</b></div>

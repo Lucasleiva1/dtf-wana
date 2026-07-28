@@ -2,7 +2,7 @@
 
 ## Individual
 
-La interfaz individual ofrece PNG. Antes de habilitar **Exportar** deben existir análisis, alfa binario y revisión visual. El archivo conserva 8 o 16 bits, incluye PPP y se reabre para comprobar dimensiones, profundidad y alfa.
+La interfaz individual ofrece PNG. Antes de habilitar **Exportar** deben existir análisis, alfa binario y revisión visual. El archivo conserva 8 o 16 bits, incluye PPP y se reabre para comprobar dimensiones, profundidad y alfa. El nombre sugerido usa `DTF_########.png`; si ya existe, se conserva y la salida recibe `(1)`, `(2)`, etc.
 
 ## Lote
 

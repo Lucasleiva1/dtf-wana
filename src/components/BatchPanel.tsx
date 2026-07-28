@@ -57,6 +57,7 @@ export function useBatchController() {
     try {
       const images = await scanBatchFolder(selected);
       setInputFolder(selected);
+      setOutputFolder(selected);
       setQueue(images.map((image) => ({ ...image, status: "pending", stage: "En espera", percent: 0 })));
       setCompleted(0);
       if (!images.length) setBatchError("La carpeta no contiene imágenes PNG, JPG, WebP, TIFF o BMP.");
@@ -262,8 +263,6 @@ export function BatchSetupPanel({ batch, onClose }: { batch: BatchController; on
 
 export function BatchQueueStrip({ batch }: { batch: BatchController }) {
   const listRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ pointerId: number; startX: number; scrollLeft: number } | null>(null);
-  const [dragging, setDragging] = useState(false);
 
   const scrollOne = (direction: -1 | 1) => {
     const list = listRef.current;
@@ -272,45 +271,20 @@ export function BatchQueueStrip({ batch }: { batch: BatchController }) {
     list.scrollBy({ left: direction * (card.offsetWidth + 8), behavior: "smooth" });
   };
 
-  const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || !listRef.current) return;
-    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, scrollLeft: listRef.current.scrollLeft };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDragging(true);
-  };
-
-  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId || !listRef.current) return;
-    event.preventDefault();
-    listRef.current.scrollLeft = drag.scrollLeft - (event.clientX - drag.startX);
-  };
-
-  const finishDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current?.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    setDragging(false);
-  };
-
   return <section className="batch-queue-strip" aria-label="Imágenes pendientes del lote">
     <button className="batch-carousel-button previous" disabled={batch.queue.length < 2} onClick={() => scrollOne(-1)} title="Imagen anterior" aria-label="Imagen anterior"><ChevronLeft size={17} /></button>
-    <div
-      ref={listRef}
-      className={`batch-queue-list${dragging ? " dragging" : ""}`}
-      onPointerDown={beginDrag}
-      onPointerMove={moveDrag}
-      onPointerUp={finishDrag}
-      onPointerCancel={finishDrag}
-      onDragStart={(event) => event.preventDefault()}
-    >
+    <div ref={listRef} className="batch-queue-list">
       {batch.queue.map((item) => <article key={item.path} className={`batch-card status-${item.status}`} title={item.error || item.relativePath}>
         <BatchThumbnail path={item.path} />
         <div className="batch-card-body"><b>{item.name}</b><span>{item.stage}</span><progress max="100" value={item.percent} />{item.error && <small>{item.error}</small>}</div>
         {item.status === "processing" && <LoaderCircle className="spin batch-card-spinner" size={15} />}
         {item.status === "error" && <CircleAlert className="batch-card-error-icon" size={15} />}
       </article>)}
-      {!batch.queue.length && <div className="batch-empty"><FileImage size={25} /><b>{batch.completed ? "Todas las imágenes terminaron" : "Elegí una carpeta de entrada"}</b><span>{batch.completed ? `${batch.completed} archivos exportados correctamente.` : "Las imágenes pendientes aparecerán solamente en esta franja."}</span></div>}
+      {!batch.queue.length && (batch.completed
+        ? <div className="batch-empty batch-complete"><FileImage size={25} /><b>Todas las imágenes terminaron</b><span>{batch.completed} archivos exportados correctamente.</span></div>
+        : <button className="batch-empty batch-add-folder" disabled={batch.running || batch.scanning} onClick={() => void batch.selectInputFolder()}>
+          <FolderInput size={25} /><b>{batch.scanning ? "Detectando imágenes…" : "Agregar carpeta de entrada"}</b><span>Elegí aquí la carpeta que contiene las imágenes del lote.</span>
+        </button>)}
     </div>
     <button className="batch-carousel-button next" disabled={batch.queue.length < 2} onClick={() => scrollOne(1)} title="Imagen siguiente" aria-label="Imagen siguiente"><ChevronRight size={17} /></button>
   </section>;

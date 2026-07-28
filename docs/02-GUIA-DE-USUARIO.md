@@ -4,14 +4,14 @@
 
 1. Pulse **Abrir** o **Abrir una imagen**, o arrastre un archivo compatible al canvas.
 2. En **Tratamiento de transparencias**, pulse **Analizar alfa**.
-3. Revise el recuento de píxeles semitransparentes, las regiones y la recomendación.
-4. Elija un preajuste o configure umbral, reconstrucción y protecciones.
-5. Espere la previsualización de impacto. Rojo será transparente; cian será opaco; magenta queda protegido o pendiente.
-6. Pulse **Aplicar tratamiento**. La aplicación vuelve a analizar el resultado.
+3. En **Protección de detalles**, elija **Proteger detalles** o **No proteger nada**.
+4. Pulse **Previsualizar resultado**.
+5. Pulse **Aplicar y verificar cero semitransparencias**. La aplicación vuelve a analizar el resultado.
+6. Si necesita ajustes específicos, despliegue las opciones avanzadas de análisis, protección, tratamiento o previsualización. Allí permanecen el histograma, la recomendación, el umbral, la reconstrucción, las protecciones individuales, las regiones y las estadísticas de impacto.
 7. Si hace falta, abra **Limpieza de residuos**, detecte o seleccione zonas y aplique la máscara.
 8. Con alfa binario verificado, abra **Pulido de borde**, previsualice y aplique.
 9. Compare antes/después. Marque la revisión visual cuando la interfaz la solicite.
-10. Pulse **Exportar** y elija un PNG.
+10. Pulse **Listo para exportar** en la revisión visual o **Exportar** en la barra superior; ambos abren el mismo flujo para elegir un PNG.
 
 [CAPTURA PENDIENTE: vista completa del módulo Transparencias con una imagen abierta y el botón Analizar alfa]
 
@@ -23,7 +23,7 @@
 4. Configure formato y, para PNG, PPP.
 5. Active o desactive Transparencias, Limpieza de residuos y Pulido de borde con sus controles **SÍ/NO**.
 6. Configure una sola vez las etapas activas.
-7. Revise las miniaturas de la cola bajo el canvas. Puede arrastrar el carrusel o usar las flechas.
+7. Revise las miniaturas de la cola bajo el canvas y recórralas con las flechas laterales.
 8. Inicie el lote. Se procesa una imagen por vez, se exporta y desaparece de la cola si termina correctamente.
 9. Use **Detener lote** para cancelar el trabajo activo y conservar lo pendiente.
 10. Los errores permanecen en la cola y pueden reintentarse.

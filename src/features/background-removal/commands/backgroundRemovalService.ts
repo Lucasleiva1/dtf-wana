@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { StudioDocument } from "../../../types/document";
+import { createDtfExportFileName } from "../../../lib/exportFileName";
 import type { ExportVerification, JobSnapshot } from "../../../types/alpha";
 import { useStudioStore } from "../../../stores/studioStore";
 import { useBackgroundRemovalStore } from "../state/backgroundRemovalStore";
@@ -154,10 +155,9 @@ export async function exportBackgroundResult(
   onProgress: (job: JobSnapshot<ExportVerification>) => void,
 ): Promise<ExportVerification | null> {
   if (!window.__TAURI_INTERNALS__) throw new Error("La exportación verificada requiere la aplicación de escritorio.");
-  const baseName = document.name.replace(/\.[^.]+$/, "");
   let path = await save({
     title: "Exportar PNG con fondo eliminado",
-    defaultPath: `${baseName}_sin_fondo.png`,
+    defaultPath: createDtfExportFileName(),
     filters: [{ name: "PNG RGBA sin pérdida", extensions: ["png"] }],
   });
   if (!path) return null;

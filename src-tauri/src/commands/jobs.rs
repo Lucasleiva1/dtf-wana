@@ -521,10 +521,10 @@ fn available_output_path(path: &Path) -> PathBuf {
     let parent = path.parent().unwrap_or_else(|| Path::new(""));
     let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or("imagen_dtf");
     let extension = path.extension().and_then(|value| value.to_str());
-    for index in 2..=10_000 {
+    for index in 1..=10_000 {
         let name = match extension {
-            Some(extension) => format!("{stem}_{index}.{extension}"),
-            None => format!("{stem}_{index}"),
+            Some(extension) => format!("{stem} ({index}).{extension}"),
+            None => format!("{stem} ({index})"),
         };
         let candidate = parent.join(name);
         if !candidate.exists() {
@@ -560,7 +560,7 @@ mod tests {
         let requested = directory.join("imagen_dtf.png");
         std::fs::write(&requested, b"existing").unwrap();
         let available = available_output_path(&requested);
-        assert_eq!(available.file_name().unwrap(), "imagen_dtf_2.png");
+        assert_eq!(available.file_name().unwrap(), "imagen_dtf (1).png");
         let _ = std::fs::remove_dir_all(directory);
     }
 }

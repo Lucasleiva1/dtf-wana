@@ -230,7 +230,15 @@ export function App() {
 
   if (showStart && !currentDocument) return <div className="start-shell" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
     <input ref={inputRef} className="visually-hidden" type="file" accept=".png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,image/*" onChange={onFile} />
-    <StartScreen onNew={() => setNewDocumentOpen(true)} onOpen={open} />
+    <StartScreen
+      onNew={() => setNewDocumentOpen(true)}
+      onOpen={open}
+      onBatch={() => {
+        setShowStart(false);
+        setModule("transparency");
+        setBatchOpen(true);
+      }}
+    />
     {newDocumentOpen && <NewDocumentDialog onClose={() => setNewDocumentOpen(false)} onCreate={createDocument} />}
     {importingImage && <div className="image-import-indicator"><LoaderCircle className="spin" size={16} /> Preparando imagen…</div>}
     {error && <div className="toast error" role="alert"><span>{error}</span><button onClick={() => setError(null)}>×</button></div>}

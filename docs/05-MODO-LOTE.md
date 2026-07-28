@@ -4,7 +4,9 @@
 
 `scan_image_folder` recorre la carpeta y subcarpetas, ordena por ruta relativa y admite hasta 25.000 imágenes compatibles. Ignora archivos mayores de 512 MB. Las miniaturas se generan a un máximo de 112 × 80 px.
 
-La cola visual está debajo del canvas y ocupa sólo la zona de imagen. Cada tarjeta muestra miniatura, nombre, etapa y progreso. Puede navegarse arrastrando horizontalmente o con flechas.
+La cola visual está debajo del canvas y ocupa sólo la zona de imagen. Cada tarjeta muestra miniatura, nombre, etapa y progreso. La navegación se realiza únicamente con las flechas laterales; la cola no se arrastra con el mouse.
+
+Cuando la cola está vacía, la misma franja ofrece **Agregar carpeta de entrada**. La configuración lateral de lote permanece visible aunque no haya una imagen o documento abierto. También se puede entrar directamente desde **Procesar por lote** en la pantalla inicial.
 
 ```mermaid
 stateDiagram-v2
@@ -22,7 +24,7 @@ stateDiagram-v2
 - Residuos: NO; partículas/restos/conexiones activables con tamaño 900, distancia 48, grosor 2 y sensibilidad 55.
 - Pulido: NO; suave, radio 1, suavizado binario, protecciones activas.
 - Formato: PNG, 300 PPP.
-- Salida: carpeta de cada original si no se elige otra.
+- Salida: al elegir la entrada, esa misma carpeta se completa y muestra automáticamente como salida. Puede reemplazarse por otra carpeta o cambiarse a la carpeta de cada original.
 
 El porcentaje de umbral se convierte al rango real: 1..254 para 8 bits o 1..65534 para 16 bits.
 
@@ -47,7 +49,7 @@ Si Transparencias está desactivado y una etapa posterior requiere alfa binario,
 
 ## Salida y nombres
 
-El nombre propuesto es `<base>_dtf.<extensión>`. Si ya existe, el backend elige un sufijo disponible; nunca sobrescribe en lote. Al elegir una única carpeta de salida se aplana la estructura de subcarpetas, por lo que nombres repetidos reciben sufijos.
+El nombre propuesto es `<base>_dtf.<extensión>`. Si ya existe, el backend elige un sufijo disponible; nunca sobrescribe en lote. La carpeta de entrada queda inicialmente seleccionada también como salida. Al usar una única carpeta de salida se aplana la estructura de subcarpetas, por lo que nombres repetidos reciben sufijos. La acción **Usar la misma carpeta de cada original** conserva en cambio la distribución por subcarpetas.
 
 ## Detener y errores
 

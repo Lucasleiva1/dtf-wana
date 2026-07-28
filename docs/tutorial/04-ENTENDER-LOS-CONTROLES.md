@@ -2,6 +2,12 @@
 
 ## Tratamiento de transparencias
 
+- El recorrido principal visible es **Analizar alfa → Protección de detalles → Previsualizar resultado → Aplicar y verificar**.
+- **Proteger detalles** activa textura conectada, líneas finas y grunge con los mismos valores existentes.
+- **No proteger nada** desactiva las protecciones automáticas y manuales.
+- **Mantener presionado para ver Antes** permanece visible debajo de **Previsualizar resultado** y muestra temporalmente el original mientras se mantiene pulsado.
+- Al completar la revisión visual, **Listo para exportar** es un botón y ejecuta el mismo flujo que **Exportar** en la barra superior; ambos permanecen disponibles.
+- Los desplegables **Avanzado** conservan el histograma, las métricas, la recomendación, el umbral, la reconstrucción, los controles individuales, la navegación por regiones, las vistas comparativas y las estadísticas de impacto.
 - **Umbral**: valores inferiores se vuelven transparentes; los demás, opacos.
 - **Reconstrucción automática/manual**: decide el radio usado para buscar color interior.
 - **Textura conectada**: protege píxeles de borde unidos a opacos.

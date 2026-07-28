@@ -2,7 +2,7 @@ schema_version: "1.0"
 documentation_scope: transparency_module
 application:
   name: "DTF Pro Studio"
-  version: "0.4.5"
+  version: "0.4.6"
   product_type: "windows_desktop"
   frontend: "React 19 + TypeScript + Vite"
   backend: "Tauri 2 + Rust"
@@ -147,6 +147,23 @@ alpha:
       protect_fine_lines: true
       protect_grunge: true
       only_isolated_particles: false
+  ui_layout:
+    primary_flow:
+      - analyze_alpha
+      - choose_detail_protection
+      - preview_result
+      - apply_and_verify
+    quick_protection_presets:
+      - protect_details
+      - protect_nothing
+    advanced_disclosures:
+      - analysis
+      - protection
+      - treatment
+      - preview
+    export_actions:
+      - top_bar
+      - visual_review_ready
   treatment_actions:
     - make_transparent
     - make_opaque
@@ -190,6 +207,10 @@ polish:
 batch:
   recursive_scan: true
   execution: sequential
+  entry_available_without_open_document: true
+  empty_queue_action: select_input_folder
+  queue_navigation: arrow_buttons_only
+  input_selection_sets_output_folder: true
   success_queue_behavior: remove
   error_queue_behavior: retain
   pause_available: false
@@ -201,11 +222,15 @@ batch:
     threshold_percent: 50
     format: png
     dpi: 300
-    output_folder: source_parent
+    output_folder: selected_input_folder
   output_name_pattern: "<source-base>_dtf.<extension>"
   avoid_overwrite: true
   selected_output_folder_preserves_subfolders: false
 exports:
+  individual_default_name_pattern: "DTF_########.png"
+  individual_name_digits: 8
+  individual_avoid_overwrite: true
+  collision_suffix_pattern: " (<n>)"
   individual_ui_formats:
     - png
   batch_formats:
