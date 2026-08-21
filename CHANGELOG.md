@@ -4,6 +4,12 @@ Este archivo registra cambios confirmados en el repositorio. Para publicar una v
 
 ## [Sin publicar]
 
+## [0.4.7] - 2026-08-21
+
+### Exportación
+
+- La exportación individual de Transparencias conserva el nombre base del archivo ingresado y agrega el sufijo `-SEMI` antes de `.png`, sin modificar el procesamiento ni la protección contra sobrescrituras.
+
 ## [0.4.6] - 2026-07-28
 
 ### Desarrollo

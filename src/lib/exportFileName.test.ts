@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDtfExportFileNameGenerator, formatDtfExportFileName } from "./exportFileName";
+import { createDtfExportFileNameGenerator, formatDtfExportFileName, formatSemiExportFileName } from "./exportFileName";
 
 describe("DTF export file names", () => {
   it("formats exactly eight digits and the PNG extension", () => {
@@ -12,5 +12,10 @@ describe("DTF export file names", () => {
 
     expect(createName()).toBe("DTF_12345678.png");
     expect(createName()).toBe("DTF_12345679.png");
+  });
+
+  it("preserves the imported base name and appends the SEMI suffix", () => {
+    expect(formatSemiExportFileName("medida 30x40.png")).toBe("medida 30x40-SEMI.png");
+    expect(formatSemiExportFileName("diseño.final.jpg")).toBe("diseño.final-SEMI.png");
   });
 });

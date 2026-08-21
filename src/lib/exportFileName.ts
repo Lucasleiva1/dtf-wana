@@ -14,6 +14,12 @@ export function formatDtfExportFileName(value: number): string {
   return `DTF_${normalized.toString().padStart(8, "0")}.png`;
 }
 
+export function formatSemiExportFileName(sourceName: string): string {
+  const fileName = sourceName.split(/[\\/]/).at(-1)?.trim() || "imagen";
+  const baseName = fileName.replace(/\.[^.]+$/, "") || "imagen";
+  return `${baseName}-SEMI.png`;
+}
+
 export function createDtfExportFileNameGenerator(random: RandomSource = browserRandom) {
   const generated = new Set<number>();
   let last = -1;

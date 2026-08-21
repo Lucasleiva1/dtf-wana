@@ -6,7 +6,7 @@ import { dispatchCommand } from "./commandBus";
 import { runExportJob } from "./jobService";
 import type { JobSnapshot } from "../types/alpha";
 import { rgbaBytesToBitmap } from "./bitmapService";
-import { createDtfExportFileName } from "./exportFileName";
+import { formatSemiExportFileName } from "./exportFileName";
 
 export type ImportedEngineDocument = {
   documentId: string;
@@ -59,7 +59,7 @@ export async function exportVerifiedDocument(document: StudioDocument, onProgres
   if (!window.__TAURI_INTERNALS__) throw new Error("La exportación verificada requiere la aplicación de escritorio.");
   let path = await save({
     title: "Exportar PNG verificado para DTF",
-    defaultPath: createDtfExportFileName(),
+    defaultPath: formatSemiExportFileName(document.name),
     filters: [{ name: "PNG RGBA sin pérdida", extensions: ["png"] }],
   });
   if (!path) return null;
