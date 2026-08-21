@@ -32,6 +32,6 @@ flowchart TD
 
 PNG incluye densidad de píxeles calculada desde PPP (1..2400) y perfil sRGB perceptual. En otros formatos el valor PPP aparece en el resultado del trabajo, pero la implementación no lo incrusta explícitamente.
 
-La exportación individual de Transparencias conserva el nombre base del archivo ingresado y agrega `-SEMI` antes de la extensión PNG. Por ejemplo, `medida 30x40.png` propone `medida 30x40-SEMI.png`. Si la ruta ya existe, el backend conserva el archivo anterior y elige `medida 30x40-SEMI (1).png`, luego `(2)`, etc.
+La exportación individual de Transparencias toma el nombre base de la imagen colocada —no el nombre de la mesa o del documento— y agrega `-semi` en minúscula antes de la extensión PNG. Por ejemplo, una imagen `katseye.png` colocada en `Documento sin título` propone `katseye-semi.png`. Si la ruta ya existe, el backend conserva el archivo anterior y elige `katseye-semi (1).png`, luego `(2)`, etc.
 
 En lote, `avoidOverwrite=true` busca `<base>_dtf.ext`, luego un nombre con sufijo disponible. Una carpeta de salida común aplana las subcarpetas.

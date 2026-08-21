@@ -2,7 +2,7 @@ schema_version: "1.0"
 documentation_scope: transparency_module
 application:
   name: "DTF Pro Studio"
-  version: "0.4.7"
+  version: "0.4.8"
   product_type: "windows_desktop"
   frontend: "React 19 + TypeScript + Vite"
   backend: "Tauri 2 + Rust"
@@ -227,8 +227,9 @@ batch:
   avoid_overwrite: true
   selected_output_folder_preserves_subfolders: false
 exports:
-  individual_default_name_pattern: "<source-base>-SEMI.png"
-  individual_name_suffix: "-SEMI"
+  individual_default_name_pattern: "<source-base>-semi.png"
+  individual_name_source: placed_image
+  individual_name_suffix: "-semi"
   individual_avoid_overwrite: true
   collision_suffix_pattern: " (<n>)"
   individual_ui_formats:

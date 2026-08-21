@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDtfExportFileNameGenerator, formatDtfExportFileName, formatSemiExportFileName } from "./exportFileName";
+import { createDtfExportFileNameGenerator, formatDocumentSemiExportFileName, formatDtfExportFileName, formatSemiExportFileName } from "./exportFileName";
 
 describe("DTF export file names", () => {
   it("formats exactly eight digits and the PNG extension", () => {
@@ -15,7 +15,15 @@ describe("DTF export file names", () => {
   });
 
   it("preserves the imported base name and appends the SEMI suffix", () => {
-    expect(formatSemiExportFileName("medida 30x40.png")).toBe("medida 30x40-SEMI.png");
-    expect(formatSemiExportFileName("diseño.final.jpg")).toBe("diseño.final-SEMI.png");
+    expect(formatSemiExportFileName("medida 30x40.png")).toBe("medida 30x40-semi.png");
+    expect(formatSemiExportFileName("diseño.final.jpg")).toBe("diseño.final-semi.png");
+  });
+
+  it("uses the placed image name instead of an untitled document name", () => {
+    expect(formatDocumentSemiExportFileName({
+      name: "Documento sin título",
+      sourceFile: { name: "Documento sin título.dtf" },
+      placedImage: { name: "katseye.png" },
+    })).toBe("katseye-semi.png");
   });
 });

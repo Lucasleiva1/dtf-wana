@@ -4,6 +4,12 @@ Este archivo registra cambios confirmados en el repositorio. Para publicar una v
 
 ## [Sin publicar]
 
+## [0.4.8] - 2026-08-21
+
+### Correcciones
+
+- La exportación de Transparencias toma el nombre de la imagen colocada incluso cuando la mesa conserva el nombre `Documento sin título` y agrega el sufijo `-semi` en minúscula.
+
 ## [0.4.7] - 2026-08-21
 
 ### Exportación

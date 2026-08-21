@@ -17,7 +17,16 @@ export function formatDtfExportFileName(value: number): string {
 export function formatSemiExportFileName(sourceName: string): string {
   const fileName = sourceName.split(/[\\/]/).at(-1)?.trim() || "imagen";
   const baseName = fileName.replace(/\.[^.]+$/, "") || "imagen";
-  return `${baseName}-SEMI.png`;
+  return `${baseName}-semi.png`;
+}
+
+export function formatDocumentSemiExportFileName(document: {
+  name: string;
+  placedImage?: { name: string } | null;
+  sourceFile?: { name: string };
+}): string {
+  const sourceName = document.placedImage?.name || document.sourceFile?.name || document.name;
+  return formatSemiExportFileName(sourceName);
 }
 
 export function createDtfExportFileNameGenerator(random: RandomSource = browserRandom) {

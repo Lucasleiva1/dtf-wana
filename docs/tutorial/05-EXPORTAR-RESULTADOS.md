@@ -2,7 +2,7 @@
 
 ## Individual
 
-La interfaz individual ofrece PNG. Antes de habilitar **Exportar** deben existir análisis, alfa binario y revisión visual. El archivo conserva 8 o 16 bits, incluye PPP y se reabre para comprobar dimensiones, profundidad y alfa. El nombre sugerido conserva el nombre base ingresado y agrega `-SEMI`, por ejemplo `medida 30x40.png` → `medida 30x40-SEMI.png`; si ya existe, se conserva y la salida recibe `(1)`, `(2)`, etc.
+La interfaz individual ofrece PNG. Antes de habilitar **Exportar** deben existir análisis, alfa binario y revisión visual. El archivo conserva 8 o 16 bits, incluye PPP y se reabre para comprobar dimensiones, profundidad y alfa. El nombre sugerido usa el nombre de la imagen colocada, aunque la mesa se llame `Documento sin título`, y agrega `-semi` en minúscula: `katseye.png` → `katseye-semi.png`. Si ya existe, se conserva y la salida recibe `(1)`, `(2)`, etc.
 
 ## Lote
 
