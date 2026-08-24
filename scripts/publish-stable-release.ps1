@@ -172,7 +172,7 @@ foreach ($asset in @($sourceInstaller, $sourceSignature)) {
 
 $assetDir = Join-Path $projectRoot "src-tauri/target/release/bundle/release-assets-$Version"
 New-Item -ItemType Directory -Path $assetDir -Force | Out-Null
-$assetName = "DTF.Pro.Studio-v${Version}-x64-setup.exe"
+$assetName = "DTF.Pro.Studio_${Version}_x64-setup.exe"
 $publishedInstaller = Join-Path $assetDir $assetName
 $publishedSignature = "$publishedInstaller.sig"
 Copy-Item -LiteralPath $sourceInstaller -Destination $publishedInstaller -Force
