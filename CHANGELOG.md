@@ -4,6 +4,13 @@ Este archivo registra cambios confirmados en el repositorio. Para publicar una v
 
 ## [Sin publicar]
 
+## [0.4.9] - 2026-08-24
+
+### Publicación estable
+
+- Se consolida el estado actual de la aplicación como punto estable, incluyendo la corrección del nombre de exportación de Transparencias y el módulo local BiRefNet Lite.
+- Los assets públicos del instalador conservan la versión visible en el nombre para facilitar su identificación y archivo.
+
 ## [0.4.8] - 2026-08-21
 
 ### Correcciones

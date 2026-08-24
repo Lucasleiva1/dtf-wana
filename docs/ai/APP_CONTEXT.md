@@ -2,7 +2,7 @@
 
 ## Identidad y alcance
 
-Aplicación: DTF Pro Studio 0.4.5, escritorio Windows, React 19 + TypeScript + Tauri 2 + Rust. Esta versión documental cubre Transparencias y Quitar fondo con IA local.
+Aplicación: DTF Pro Studio 0.4.9, escritorio Windows, React 19 + TypeScript + Tauri 2 + Rust. Esta versión documental cubre Transparencias y Quitar fondo con IA local.
 
 ## Modelo mental
 

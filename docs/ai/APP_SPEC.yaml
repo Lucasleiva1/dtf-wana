@@ -2,7 +2,7 @@ schema_version: "1.0"
 documentation_scope: transparency_module
 application:
   name: "DTF Pro Studio"
-  version: "0.4.8"
+  version: "0.4.9"
   product_type: "windows_desktop"
   frontend: "React 19 + TypeScript + Vite"
   backend: "Tauri 2 + Rust"
